@@ -215,7 +215,7 @@ public:
   }
 
 private:
-  std::vector<std::string> textLines;
+  std::vector<std::string> textLines{5};
   pros::Mutex sharedMutex;
 
   // Internal coordinate calculation

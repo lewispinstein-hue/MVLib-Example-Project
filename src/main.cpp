@@ -88,6 +88,7 @@ void initialize() {
     .LeftDrivetrain = mvlib::shared(left_mg),
     .RightDrivetrain = mvlib::shared(right_mg)
   });
+  chassis.calibrate();
   logger.start();
 }
 
