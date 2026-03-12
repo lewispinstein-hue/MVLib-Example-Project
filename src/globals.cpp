@@ -1,19 +1,20 @@
 #include "globals.hpp"
+#include "pros/misc.hpp"
 
-pros::Controller controller(pros::E_CONTROLLER_MASTER);
+pros::Controller controller(CONTROLLER_MASTER);
 
-pros::MotorGroup left_mg({-12, -1},
+pros::MotorGroup left_mg({-5, -10},
                          pros::MotorGearset::blue,
                          pros::v5::MotorUnits::degrees);
 
-pros::MotorGroup right_mg({18, 9},
+pros::MotorGroup right_mg({20, 16},
                           pros::MotorGearset::blue,
                           pros::v5::MotorUnits::degrees);
 
 float ROBOT_WIDTH = 12.25f;
 float ROBOT_HEIGHT = 12.40f;
 
-pros::Imu imu(10);
+pros::Imu imu(19);
 
 lemlib::Drivetrain drivetrain(&left_mg,
                               &right_mg,
@@ -22,12 +23,12 @@ lemlib::Drivetrain drivetrain(&left_mg,
                               400,
                               2);
 
-pros::Rotation horizontal(20);
-pros::Rotation vertical(8);
+pros::Rotation horizontal(11);
+pros::Rotation vertical(13);
 
 lemlib::TrackingWheel vertical1(&vertical, 
                                 1.95, 
-                                0, -1);
+                                1);
 
 lemlib::TrackingWheel horizontal1(&horizontal,
                                   1.95,
@@ -93,18 +94,18 @@ void handleMisc() {
 
   // Map every controller button you care about
   static constexpr ButtonBinding bindings[] = {
-      {ControllerButton::BTN_L1,   pros::E_CONTROLLER_DIGITAL_L1,   true},
-      {ControllerButton::BTN_R1,   pros::E_CONTROLLER_DIGITAL_R1,   true},
-      {ControllerButton::BTN_R2,   pros::E_CONTROLLER_DIGITAL_R2,   true},
-      {ControllerButton::BTN_L2,   pros::E_CONTROLLER_DIGITAL_L2,   true},
-      {ControllerButton::BTN_B,    pros::E_CONTROLLER_DIGITAL_B,    false},
-      {ControllerButton::BTN_A,    pros::E_CONTROLLER_DIGITAL_A,    true},
-      {ControllerButton::BTN_Y,    pros::E_CONTROLLER_DIGITAL_Y,    true},
-      {ControllerButton::BTN_X,    pros::E_CONTROLLER_DIGITAL_X,    true},
-      {ControllerButton::BTN_UP,   pros::E_CONTROLLER_DIGITAL_UP,   true},
-      {ControllerButton::BTN_DOWN, pros::E_CONTROLLER_DIGITAL_DOWN, false},
-      {ControllerButton::BTN_LEFT, pros::E_CONTROLLER_DIGITAL_LEFT, true},
-      {ControllerButton::BTN_RIGHT,pros::E_CONTROLLER_DIGITAL_RIGHT,true},
+      {ControllerButton::BTN_L1,   DIGITAL_L1,   true},
+      {ControllerButton::BTN_R1,   DIGITAL_R1,   true},
+      {ControllerButton::BTN_R2,   DIGITAL_R2,   true},
+      {ControllerButton::BTN_L2,   DIGITAL_L2,   true},
+      {ControllerButton::BTN_B,    DIGITAL_B,    false},
+      {ControllerButton::BTN_A,    DIGITAL_A,    true},
+      {ControllerButton::BTN_Y,    DIGITAL_Y,    true},
+      {ControllerButton::BTN_X,    DIGITAL_X,    true},
+      {ControllerButton::BTN_UP,   DIGITAL_UP,   true},
+      {ControllerButton::BTN_DOWN, DIGITAL_DOWN, false},
+     {ControllerButton::BTN_LEFT, DIGITAL_LEFT, true},
+     {ControllerButton::BTN_RIGHT,DIGITAL_RIGHT,true},
   };
 
   ControllerButton event = ControllerButton::BTN_NONE;
@@ -112,8 +113,8 @@ void handleMisc() {
   // Find the first button that fired this cycle
   for (const auto &b : bindings) {
     bool triggered = b.onPress
-                         ? controller.get_digital_new_press(b.button)
-                         : controller.get_digital_new_release(b.button);
+                     ? controller.get_digital_new_press(b.button)
+                     : controller.get_digital_new_release(b.button);
     if (triggered) {
       event = b.action;
       break;
@@ -154,10 +155,37 @@ void handleMisc() {
 
   case ControllerButton::BTN_LEFT:
     break;
+    
   case ControllerButton::BTN_RIGHT:
     break;
 
   case ControllerButton::BTN_NONE:
   default: break;
   }
+}
+
+void setupWatches() {
+  logger.watch("Left drive temp:", mvlib::LogLevel::INFO, 10_mvS,
+  []() { return avg<double, float>(left_mg.get_temperature_all()); },
+  mvlib::LevelOverride<float>{
+    .elevatedLevel = mvlib::LogLevel::WARN,
+    .predicate = mvlib::asPredicate<float>([](float v) { return v > 50; }),
+    .label = "High Left Drive Temp:"
+  }, "%.1f");
+
+  logger.watch("Right Drive Temp:", mvlib::LogLevel::INFO, 10_mvS,
+  []() { return avg<double, float>(right_mg.get_temperature_all()); },
+  mvlib::LevelOverride<float>{
+    .elevatedLevel = mvlib::LogLevel::WARN,
+    .predicate = mvlib::asPredicate<float>([](float v) { return v > 50; }),
+    .label = "High Right Drive Temp:"
+  }, "%.1f");
+
+  logger.watch("Battery %%:", mvlib::LogLevel::INFO, 30_mvS,
+  []() { return (int)pros::battery::get_capacity(); },
+  mvlib::LevelOverride<int>{
+    .elevatedLevel = mvlib::LogLevel::WARN,
+    .predicate = PREDICATE(v < 30),
+    .label = "Low Battery:"
+  }, "%.0f");
 }

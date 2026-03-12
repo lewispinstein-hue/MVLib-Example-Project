@@ -95,7 +95,7 @@ public:
    * @param detectTouchOnly If @c true, returns on any contact. If @c false,
    * waits for a press and release.
    * @return @c true if touched within timeout, @c false if timed out.
-   * * @example
+   * @example
    * // Wait 2 seconds for a user to tap the screen
    * if (waitForScreenTouch(2000)) startAuton();
    * @endcode
@@ -105,7 +105,6 @@ public:
 
   /**
    * @brief Clears the screen and resets the internal line buffer.
-   * @note Calls @ref pros::screen::erase internally.
    */
   void clearScreen();
 
@@ -121,39 +120,32 @@ public:
    * @brief Formats and displays scrolling text on the Robot Brain.
    * @details Manages a scrolling buffer of text lines. If the screen fills up,
    * the oldest line is removed.
-   * * @param clearScreen If @c true, clears the screen and internal text buffer
+   * @param clearScreen If @c true, clears the screen and internal text buffer
    * before printing.
    * @param name Optional prefix (e.g. system name). If provided, prepends
    * "Name: " to the message.
    * @param format printf-style format string.
    * @param ... Arguments for the format string.
-   * * @example
+   * @example
    * // Result: "Chassis: Position: 10.5"
    * printToScreen(false, "Chassis", "Position: %.1f", 10.5);
    * @endcode
    */
   template <typename... Args>
-  void printToScreen(bool clear, const char *name, const char *format,
-                     Args &&...args) {
+  void printToScreen(bool clear, uint16_t x, uint16_t y, 
+                     const char *format, Args &&...args) {
     // Thread safety
     MutexGuard m(sharedMutex);
-    if (!m.isLocked())
-      return;
+    if (!m.isLocked()) return;
 
     // Clear screen area if requested
     if (clear) {
       textLines.clear();
-      pros::screen::erase_rect(0, 0, 480, MAX_ROWS * ROW_HEIGHT);
+      pros::screen::erase_rect(0, 0, x, y);
     }
 
     // Format the string safely using fmt
-    std::string formatted =
-        fmt::format(fmt::runtime(format), std::forward<Args>(args)...);
-
-    // Prepend the name if provided
-    if (name != nullptr && name[0] != '\0') {
-      formatted = std::string(name) + ": " + formatted;
-    }
+    std::string formatted = fmt::format(fmt::runtime(format), std::forward<Args>(args)...);
 
     // Split into logical lines by '\n' first
     std::vector<std::string> logicalLines;
@@ -167,9 +159,9 @@ public:
     logicalLines.push_back(formatted.substr(pos));
 
     // Automatic text wrapping (naive)
-    size_t maxCharsPerLine = SCREEN_WIDTH / CHAR_WIDTH;
+    size_t maxCharsPerLine = (SCREEN_WIDTH - x)/ CHAR_WIDTH;
 
-    for (const auto &line : logicalLines) {
+    for (const auto& line : logicalLines) {
       size_t start = 0;
       while (start < line.size()) {
         size_t len = std::min(maxCharsPerLine, line.size() - start);
@@ -195,14 +187,12 @@ public:
     }
 
     // Clamp the number of lines
-    while (textLines.size() > MAX_ROWS) {
-      textLines.erase(textLines.begin());
-    }
+    while (textLines.size() > MAX_ROWS) textLines.erase(textLines.begin());
 
     // Redraw all lines
     for (size_t i = 0; i < textLines.size(); ++i) {
-      pros::screen::print(pros::E_TEXT_SMALL, 10,
-                          static_cast<int>(i * ROW_HEIGHT), "%s",
+      pros::screen::print(pros::E_TEXT_SMALL, x,
+                          static_cast<int>(i * ROW_HEIGHT) + y, "%s",
                           textLines[i].c_str());
                           pros::delay(15);
     }
@@ -211,7 +201,7 @@ public:
   template <typename... Args>
   void printToScreen(const char *format, Args &&...args) {
     // Convenience wrapper: forwards to full overload
-    printToScreen(false, "", format, std::forward<Args>(args)...);
+    printToScreen(false, 0, 0, format, std::forward<Args>(args)...);
   }
 
 private:

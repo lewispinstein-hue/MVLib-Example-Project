@@ -1,95 +1,105 @@
 #include "main.h"
+#include "globals.hpp"
+#include "mvlib/core.hpp"
+#include <cstdint>
 
-/**
- * Runs initialization code. This occurs as soon as the program is started.
- *
- * All other competition modes are blocked by initialize; it is recommended
- * to keep execution time for this mode under a few seconds.
- */
+template<class T>
+requires std::is_arithmetic_v<T>
+constexpr float toFloat(T v) { return static_cast<float>(std::floor(v + 0.5)); }
+
+struct simPose {
+  double x;
+  double y;
+  double theta;
+}; simPose simpose{0, 0, 0};
+
+inline const simPose getSimPose() { return simpose; }
+
+void updateSimPose() { 
+  chassis.setPose(toFloat(simpose.x), 
+                  toFloat(simpose.y), 
+                  toFloat(simpose.theta)); 
+}
+
+void setSimPose(const simPose pose) {
+  simpose.x = pose.x;
+  simpose.y = pose.y;
+  simpose.theta = pose.theta;
+}
+
+simPose userPose{0, 0, 0};
+static uint32_t lastSimUpdate = 0;
+constexpr uint16_t SIM_DEBOUNCE_MS = 150;
+bool simMode = false;
+void moveSimPose() {
+  if (pros::millis() - lastSimUpdate < SIM_DEBOUNCE_MS) return;
+  lastSimUpdate = pros::millis();
+  // use arrow keys to move, B to update, and L1/L2 to turn
+  if (controller.get_digital(DIGITAL_LEFT)) userPose.x -= 1;
+  else if (controller.get_digital(DIGITAL_RIGHT)) userPose.x += 1;
+  if (controller.get_digital(DIGITAL_UP)) userPose.y += 1;
+  else if (controller.get_digital(DIGITAL_DOWN)) userPose.y -= 1;
+  if (controller.get_digital(DIGITAL_L1)) userPose.theta += 1;
+  else if (controller.get_digital(DIGITAL_L2)) userPose.theta -= 1;
+
+  if (controller.get_digital_new_press(DIGITAL_B)) simMode = !simMode;
+
+  if (simMode) {
+    setSimPose({userPose.x, userPose.y, userPose.theta}); // Set the pose
+    updateSimPose(); // Then update it
+  }
+}
 
 void initialize() {
   mvlib::setOdom(logger, &chassis);
   logger.setRobot({
-    .LeftDrivetrain = mvlib::shared(left_mg),
-    .RightDrivetrain = mvlib::shared(right_mg)
+    .leftDrivetrain = &left_mg,
+    .rightDrivetrain = &right_mg
   });
   chassis.calibrate();
   chassis.setPose(-60, -60, 0);
+  
+  setupWatches();
   logger.start();
 }
 
-double expo_joystick_forward(double input, double expoForwards, double deadband) {
+double expoForward(double input, double expoForwards, double deadband) {
   if (fabs(input) < deadband) return 0;
-  double normalized = input / 127.0;
-  double curved = pow(fabs(normalized), expoForwards);
-  curved = curved * (normalized >= 0 ? 1 : -1); // restore sign
-  if (fabs(curved) >= 1) return input;
+  double norm = input / 127.0;
+  double curved = pow(fabs(norm), expoForwards);
+  curved = curved * (norm >= 0 ? 1 : -1); 
+  if (fabs(curved) >= 1) return 127 * ((norm >= 0) ? 1 : -1);
   return curved * 127.0;
 }
 
-double expo_joystick_turn(double input, double expoTurn, double deadband = 20) {
+double expoTurn(double input, double expoTurn, double deadband) {
   if (fabs(input) < deadband) return 0;
   double norm = input / 127.0;
   double linear = norm;
   double exponential = pow(fabs(norm), expoTurn) * ((norm >= 0) ? 1 : -1);
-  double blended = 0.40 * linear + 0.42 * exponential;
-  if (fabs(blended) >= 1) return input;
-  return blended * 127.0;
+  double blended = 0.38 * linear + 0.42 * exponential;
+  if (fabs(blended) >= 1) return 127 * ((norm >= 0) ? 1 : -1);
+  return blended * 90.0;
 }
 
-/**
- * Runs while the robot is in the disabled state of Field Management System or
- * the VEX Competition Switch, following either autonomous or opcontrol. When
- * the robot is enabled, this task will exit.
- */
 void disabled() {}
 
-/**
- * Runs after initialize(), and before autonomous when connected to the Field
- * Management System or the VEX Competition Switch. This is intended for
- * competition-specific initialization routines, such as an autonomous selector
- * on the LCD.
- *
- * This task will exit when the robot is enabled and autonomous or opcontrol
- * starts.
- */
 void competition_initialize() {}
 
-/**
- * Runs the user autonomous code. This function will be started in its own task
- * with the default priority and stack size whenever the robot is enabled via
- * the Field Management System or the VEX Competition Switch in the autonomous
- * mode. Alternatively, this function may be called in initialize or opcontrol
- * for non-competition testing purposes.
- *
- * If the robot is disabled or communications is lost, the autonomous task
- * will be stopped. Re-enabling the robot will restart the task, not re-start it
- * from where it left off.
- */
 void autonomous() {}
-
-template<class T, class rtn = double>
-requires (std::is_arithmetic_v<T> && std::is_arithmetic_v<rtn>)
-rtn avg(const std::vector<T>& v) {
-  rtn num = 0;
-  for (auto& e : v) {
-    num += e;
-  }
-  return v.empty() ? 0 : num /= v.size();
-}
 
 void opcontrol() {
   const uint8_t deadband = 10;
   while (true) {
     handleMisc();
     
-    double LEFT_Y = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
-    double RIGHT_X = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
+    double LEFT_Y = controller.get_analog(ANALOG_LEFT_Y);
+    double RIGHT_X = controller.get_analog(ANALOG_RIGHT_X);
 
-    LEFT_Y = expo_joystick_forward(LEFT_Y, 2.6, deadband);
-    RIGHT_X = expo_joystick_turn(RIGHT_X, 1.9, deadband);
+    LEFT_Y = expoForward(LEFT_Y, 1.9, deadband);
+    RIGHT_X = expoTurn(RIGHT_X, 2.8, deadband);
 
-    chassis.arcade(LEFT_Y, RIGHT_X);
+    chassis.arcade(LEFT_Y, RIGHT_X, false, 0.4);
     pros::delay(20);
   }
 }
