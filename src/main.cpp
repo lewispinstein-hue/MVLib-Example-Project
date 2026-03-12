@@ -9,8 +9,9 @@ void initialize() {
     .leftDrivetrain = &left_mg,
     .rightDrivetrain = &right_mg
   });
+  logger.setLoggerMinLevel(mvlib::LogLevel::DEBUG);
   chassis.calibrate();
-  chassis.setPose(-60, -60, 0);
+  chassis.setPose(50, 6, 270);
   
   setupWatches();
   logger.start();
@@ -52,7 +53,7 @@ void opcontrol() {
     LEFT_Y = expoForward(LEFT_Y, 1.9, deadband);
     RIGHT_X = expoTurn(RIGHT_X, 2.8, deadband);
     
-    chassis.arcade(LEFT_Y, RIGHT_X, false, 0.4);
+    chassis.arcade(LEFT_Y, RIGHT_X, false, 0.48);
     pros::delay(20);
   }
 }

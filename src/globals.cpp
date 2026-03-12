@@ -1,4 +1,5 @@
 #include "globals.hpp"
+#include "chassisEventListener.hpp"
 #include "pros/misc.hpp"
 
 pros::Controller controller(CONTROLLER_MASTER);
@@ -11,28 +12,28 @@ pros::MotorGroup right_mg({20, 16},
                           pros::MotorGearset::blue,
                           pros::v5::MotorUnits::degrees);
 
-float ROBOT_WIDTH = 12.25f;
+float TRACK_WIDTH = 8.9;
 float ROBOT_HEIGHT = 12.40f;
 
-pros::Imu imu(19);
+pros::Imu imu(18);
 
 lemlib::Drivetrain drivetrain(&left_mg,
                               &right_mg,
-                              9.1,
+                              TRACK_WIDTH,
                               lemlib::Omniwheel::NEW_4,
                               400,
                               2);
 
-pros::Rotation horizontal(11);
-pros::Rotation vertical(13);
+pros::Rotation horizontal(-11);
+pros::Rotation vertical(14);
 
 lemlib::TrackingWheel vertical1(&vertical, 
                                 1.95, 
-                                1);
+                                0.5);
 
 lemlib::TrackingWheel horizontal1(&horizontal,
                                   1.95,
-                                  -4);
+                                  0);
 
 lemlib::OdomSensors sensors(&vertical1,
                             nullptr,
@@ -122,9 +123,11 @@ void handleController() {
 
   switch (event) {
   case ControllerButton::BTN_L1:
+    c::turnToHeading(180, 5000);
     break;
 
   case ControllerButton::BTN_R1:
+  chassis.setPose(-24, -35, 0);
     break;
 
   case ControllerButton::BTN_R2:
@@ -135,12 +138,15 @@ void handleController() {
     break;
 
   case ControllerButton::BTN_B:
+  logger.pause();
     break;
 
   case ControllerButton::BTN_A:
+  logger.resume();
     break;
 
   case ControllerButton::BTN_Y:
+  LOG_INFO("Status: %d", logger.status());
     break;
 
   case ControllerButton::BTN_X:
@@ -164,7 +170,7 @@ void handleController() {
 }
 
 void setupWatches() {
-  logger.watch("Left drive temp", mvlib::LogLevel::INFO, 10_mvS,
+  logger.watch("Left Drive Temp", mvlib::LogLevel::INFO, 10_mvS,
   []() { return avg<double, float>(left_mg.get_temperature_all()); },
   mvlib::LevelOverride<float>{
     .elevatedLevel = mvlib::LogLevel::WARN,
@@ -180,7 +186,7 @@ void setupWatches() {
     .label = "High Right Drive Temp"
   }, "%.1f");
 
-  logger.watch("Battery %%", mvlib::LogLevel::INFO, 30_mvS,
+  logger.watch("Battery %", mvlib::LogLevel::INFO, 30_mvS,
   []() { return (int)pros::battery::get_capacity(); },
   mvlib::LevelOverride<int>{
     .elevatedLevel = mvlib::LogLevel::WARN,

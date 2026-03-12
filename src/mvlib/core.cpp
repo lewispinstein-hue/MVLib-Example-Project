@@ -40,8 +40,8 @@ void Logger::setPrintWatches(bool v) {
 }
 
 void Logger::setLoggerMinLevel(LogLevel level) {
-  m_minLogLevel = level;
   LOG_DEBUG("SetLoggerMinLevel set to: %d", (int)level);
+  m_minLogLevel = level;
 }
 
 void Logger::setPoseGetter(std::function<std::optional<Pose>()> getter) {
@@ -82,7 +82,7 @@ const char *Logger::m_levelToString(const LogLevel level) const {
 }
 
 void Logger::logMessage(LogLevel level, const char *fmt, ...) {
-  if (level < m_minLogLevel) return;
+  if (level < m_minLogLevel || !(int)m_minLogLevel) return;
 
   MutexGuard m(m_terminalMutex);
   if (!m.isLocked()) return;
@@ -101,36 +101,27 @@ void Logger::logMessage(LogLevel level, const char *fmt, ...) {
     logToSD(m_levelToString(level), "%s", buffer);
 }
 
-static void ensureLogDirExists() {
-  const char *folderName = "/usd/logs";
-  struct stat st;
-  if (stat(folderName, &st) != 0) {
-    mkdir(folderName, 0777);
-    LOG_DEBUG("Making directory: %s for logging", folderName);
-  } else LOG_DEBUG("Logging directory: %s already exists. Skipping creation", folderName);
-}
-
-void Logger::m_makeTimestampedFilename() {
+void Logger::m_makeTimestampedFile() {
   time_t now = time(0);
   tm *tstruct = localtime(&now);
 
   if (tstruct->tm_year < 100) {
     LOG_DEBUG("VEX RTC Inaccurate. Falling back to program duration and last upload date.");
-    snprintf(m_currentFilename, sizeof(m_currentFilename), "/usd/logs/%s_%u-%u.log",
-             date, pros::millis() / 1000, pros::millis());
+    snprintf(m_currentFilename, sizeof(m_currentFilename), "/usd/MVLIB_%s_%u-%u.log",
+             date, pros::millis() / 1000, pros::millis() / 100);
   } else {
     LOG_DEBUG("VEX RTC Plausible. Creating file name with date.");
     strftime(m_currentFilename, sizeof(m_currentFilename),
-             "/usd/logs/%Y-%m-%d_%H-%M.log", tstruct);
+             "/usd/MVLIB_%Y-%m-%d_%H-%M.log", tstruct);
   }
-}
+} 
 
 bool Logger::m_initSDLogger() {
   if (pros::usd::is_installed()) {
-    LOG_DEBUG("[DEBUG]: SD Card installed (On first attempt)");
+    LOG_DEBUG("SD Card installed (On first attempt)");
     pros::delay(500);
   } else {
-    LOG_DEBUG("[DEBUG]: SD Card not installed, rechecking...");
+    LOG_DEBUG("SD Card not installed, rechecking...");
     for (int i = 0; i < 10; i++) {
       if (pros::usd::is_installed()) {
         LOG_DEBUG("SD Card installed! Attempt: %d/10", i);
@@ -142,16 +133,15 @@ bool Logger::m_initSDLogger() {
   }
 
   if (!pros::usd::is_installed()) {
-    LOG_DEBUG("SD Card not installed after 10 attemps. Aborting SD card.");
+    LOG_FATAL("SD Card not installed after 10 attemps. Aborting SD card.");
     return false;
   }
 
-  ensureLogDirExists();
-  m_makeTimestampedFilename();
+  m_makeTimestampedFile();
 
   m_sdFile = fopen(m_currentFilename, "w");
   if (!m_sdFile) {
-    LOG_FATAL("File could not be opened. Aborting.");
+    LOG_FATAL("File: %s could not be opened. Aborting.", m_currentFilename);
     return false;
   }
   LOG_DEBUG("File successfully opened.");
@@ -209,16 +199,18 @@ uint32_t Logger::status() const {
 void Logger::pause() {
   uint32_t st = status();
   if (st != pros::E_TASK_STATE_DELETED && st != pros::E_TASK_STATE_INVALID &&
-      st != pros::E_TASK_STATE_SUSPENDED && st != pros::E_TASK_STATE_BLOCKED) {
+      st != pros::E_TASK_STATE_SUSPENDED) {
     m_task->suspend();
+    LOG_INFO("Logger paused.");
   } else LOG_INFO("Logger cannot be paused as it is not in a running state.");
 }
 
 void Logger::resume() {
   uint32_t st = status();
   if (st != pros::E_TASK_STATE_DELETED && st != pros::E_TASK_STATE_INVALID &&
-      st == pros::E_TASK_STATE_SUSPENDED && st != pros::E_TASK_STATE_BLOCKED) {
+      st == pros::E_TASK_STATE_SUSPENDED) {
     m_task->resume();
+    LOG_INFO("Logger resumed.");
   } else LOG_INFO("Logger cannot be resumed as it is not paused.");
 }
 
@@ -236,7 +228,7 @@ void Logger::start() {
       m_config.logToSD.store(false);
       m_sdLocked = true;
       LOG_FATAL("initSDCard failed! Unable to initialize SD card.");
-    } else LOG_INFO("Successfully initialized SD card with filename: /logs/%s!", m_currentFilename);
+    } else LOG_INFO("Successfully initialized SD card with filename: %s!", m_currentFilename);
   }
     
   // Check config

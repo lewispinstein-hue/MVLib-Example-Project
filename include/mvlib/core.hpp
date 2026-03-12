@@ -177,7 +177,7 @@ enum class LogLevel {
   WARN,     /// Used for logs still not dangerous, but that should stand out
   ERROR,    /// Used when something has gone wrong.
   FATAL     /// Used only for serious failures; often precedes a force stop.
-}; 
+};
 
 // ---------- Generic variable watches ----------
 
@@ -520,7 +520,7 @@ private:
   bool m_initSDLogger();
 
   /// @brief Generate a timestamped filename into m_currentFilename.
-  void m_makeTimestampedFilename();
+  void m_makeTimestampedFile();
 
   /**
    * @brief Convert a LogLevel to a printable string.
@@ -697,7 +697,7 @@ private:
 
   /**
    * @brief Controls how often mvlib polls for new data and logs it.
-   *
+   *         
    *
    * @note Time is in ms
    * @note This interval overrides the sd card interval. If logging to 
