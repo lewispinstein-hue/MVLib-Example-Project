@@ -1,6 +1,7 @@
 #pragma once
 
 // Global hardware and control instances shared across the robot code.
+#include "pros/adi.hpp"
 #define PROS_USE_SIMPLE_NAMES
 
 // IWYU pragma: begin_keep
@@ -12,8 +13,8 @@
 // IWYU pragma: end_keep
 
 extern pros::Controller controller;
-extern pros::MotorGroup left_mg;
-extern pros::MotorGroup right_mg;
+extern pros::MotorGroup leftMg;
+extern pros::MotorGroup rightMg;
 
 extern float ROBOT_WIDTH;
 extern float ROBOT_HEIGHT;
@@ -26,12 +27,15 @@ extern pros::Rotation vertical;
 extern lemlib::TrackingWheel horizontal1;
 extern lemlib::TrackingWheel vertical1;
 extern lemlib::OdomSensors sensors;
-extern lemlib::ControllerSettings lateral_controller;
-extern lemlib::ControllerSettings angular_controller;
+extern lemlib::ControllerSettings lateralController;
+extern lemlib::ControllerSettings angularController;
 extern lemlib::Chassis chassis;
 
 extern screen::Manager disp;
 extern mvlib::Logger& logger;
+
+extern pros::Distance rearDist;
+extern pros::Distance frontDist;
 
 void handleController();
 void setupWatches();

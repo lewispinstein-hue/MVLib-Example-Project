@@ -4,26 +4,28 @@
 
 pros::Controller controller(CONTROLLER_MASTER);
 
-pros::MotorGroup left_mg({-5, -10},
+pros::MotorGroup leftMg({-5, -10},
                          pros::MotorGearset::blue,
                          pros::v5::MotorUnits::degrees);
 
-pros::MotorGroup right_mg({20, 16},
+pros::MotorGroup rightMg({20, 16},
                           pros::MotorGearset::blue,
                           pros::v5::MotorUnits::degrees);
+
+pros::Distance rearDist(1); 
+pros::Distance frontDist(8);
 
 float TRACK_WIDTH = 8.9;
 float ROBOT_HEIGHT = 12.40f;
 
-pros::Imu imu(18);
-
-lemlib::Drivetrain drivetrain(&left_mg,
-                              &right_mg,
+lemlib::Drivetrain drivetrain(&leftMg,
+                              &rightMg,
                               TRACK_WIDTH,
                               lemlib::Omniwheel::NEW_4,
                               400,
                               2);
 
+pros::Imu imu(17);
 pros::Rotation horizontal(-11);
 pros::Rotation vertical(14);
 
@@ -41,7 +43,7 @@ lemlib::OdomSensors sensors(&vertical1,
                             nullptr,
                             &imu);
 
-lemlib::ControllerSettings lateral_controller(10,
+lemlib::ControllerSettings lateralController(10,
                                              0,
                                              3,
                                              3,
@@ -51,7 +53,7 @@ lemlib::ControllerSettings lateral_controller(10,
                                              500,
                                              20);
 
-lemlib::ControllerSettings angular_controller(2,
+lemlib::ControllerSettings angularController(2,
                                               0,
                                               10,
                                               3,
@@ -62,8 +64,8 @@ lemlib::ControllerSettings angular_controller(2,
                                               0);
 
 lemlib::Chassis chassis(drivetrain,
-                        lateral_controller,
-                        angular_controller,
+                        lateralController,
+                        angularController,
                         sensors);
 
 screen::Manager disp;
@@ -124,45 +126,49 @@ void handleController() {
   switch (event) {
   case ControllerButton::BTN_L1:
     c::turnToHeading(180, 5000);
-    break;
+  break;
 
   case ControllerButton::BTN_R1:
-  chassis.setPose(-24, -35, 0);
-    break;
+    chassis.setPose(-24, -35, 0);
+  break;
 
   case ControllerButton::BTN_R2:
   chassis.setPose(0, 0, 0);
-    break;
+  break;
 
   case ControllerButton::BTN_L2:
+  {
+    static int count = 0;
+    disp.printToScreen(false, 50, 50, "Count: {}", count++);
     break;
+  }
 
   case ControllerButton::BTN_B:
   logger.pause();
-    break;
+  break;
 
   case ControllerButton::BTN_A:
   logger.resume();
-    break;
+  break;
 
   case ControllerButton::BTN_Y:
   LOG_INFO("Status: %d", logger.status());
-    break;
+  break;
 
   case ControllerButton::BTN_X:
-    break;
+  break;
 
   case ControllerButton::BTN_DOWN:
-    break;
+  break;
 
   case ControllerButton::BTN_UP:
-    break;
+  break;
 
   case ControllerButton::BTN_LEFT:
-    break;
+  break;
     
   case ControllerButton::BTN_RIGHT:
-    break;
+  break;
 
   case ControllerButton::BTN_NONE:
   default: break;
@@ -171,7 +177,7 @@ void handleController() {
 
 void setupWatches() {
   logger.watch("Left Drive Temp", mvlib::LogLevel::INFO, 10_mvS,
-  []() { return avg<double, float>(left_mg.get_temperature_all()); },
+  []() { return avg<double, float>(leftMg.get_temperature_all()); },
   mvlib::LevelOverride<float>{
     .elevatedLevel = mvlib::LogLevel::WARN,
     .predicate = mvlib::asPredicate<float>([](float v) { return v > 50; }),
@@ -179,7 +185,7 @@ void setupWatches() {
   }, "%.1f");
 
   logger.watch("Right Drive Temp", mvlib::LogLevel::INFO, 10_mvS,
-  []() { return avg<double, float>(right_mg.get_temperature_all()); },
+  []() { return avg<double, float>(rightMg.get_temperature_all()); },
   mvlib::LevelOverride<float>{
     .elevatedLevel = mvlib::LogLevel::WARN,
     .predicate = mvlib::asPredicate<float>([](float v) { return v > 50; }),

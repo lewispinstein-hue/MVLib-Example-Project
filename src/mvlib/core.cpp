@@ -4,6 +4,7 @@
 #include <cstring>
 #include <cmath>
 #include <sys/stat.h> 
+#include <random>
 
 #ifdef MVLIB_LOGS_REDEFINED
 #define LOG_DEBUG MVLIB_LOG_DEBUG
@@ -101,16 +102,29 @@ void Logger::logMessage(LogLevel level, const char *fmt, ...) {
     logToSD(m_levelToString(level), "%s", buffer);
 }
 
+static inline int getrandInt() {
+    uint64_t seed = pros::micros();
+    seed ^= (uint64_t)pros::battery::get_voltage() << 32;
+    seed ^= (uint64_t)pros::battery::get_current();
+    
+    std::mt19937 gen(seed);
+    std::uniform_int_distribution<> dis(0, 9999);
+    return dis(gen);
+}
+
 void Logger::m_makeTimestampedFile() {
   time_t now = time(0);
   tm *tstruct = localtime(&now);
 
+  // Add random variance to filename to avoid overwriting existing files
+  const int randint = getrandInt();
+  
   if (tstruct->tm_year < 100) {
-    LOG_DEBUG("VEX RTC Inaccurate. Falling back to program duration and last upload date.");
-    snprintf(m_currentFilename, sizeof(m_currentFilename), "/usd/MVLIB_%s_%u-%u.log",
-             date, pros::millis() / 1000, pros::millis() / 100);
+    LOG_INFO("VEX RTC Inaccurate. Falling back to program duration and last upload date.");
+    snprintf(m_currentFilename, sizeof(m_currentFilename), "/usd/MVLIB_%s_%u-%u_%d.log",
+             date, pros::millis() / 1000, pros::millis() / 100, randint);
   } else {
-    LOG_DEBUG("VEX RTC Plausible. Creating file name with date.");
+    LOG_INFO("VEX RTC Plausible. Creating file name with date.");
     strftime(m_currentFilename, sizeof(m_currentFilename),
              "/usd/MVLIB_%Y-%m-%d_%H-%M.log", tstruct);
   }
@@ -216,7 +230,7 @@ void Logger::resume() {
 
 void Logger::start() {
   if (m_started) {
-    LOG_WARN("start() called a second time. Aborted!");
+    LOG_WARN("start() called more than once. Aborted!");
     return;
   }
   m_started = true;
@@ -246,7 +260,7 @@ void Logger::start() {
       // Update loop
       try { this->Update(); }
       catch (std::exception &e) {
-        LOG_FATAL("%s\n", e.what());
+        LOG_FATAL("%s", e.what());
       }
 
       // Flush stdout buffer, and wait appropriate time
@@ -346,15 +360,18 @@ void Logger::Update() {
     prevMs = nowMs;
   }
 
-  auto pose = m_getPose ? m_getPose() : std::nullopt;
-  if (!pose) return;
-  
-  double normalizedTheta = fmod(pose->theta, 360.0); // Normalize theta 
-  if (normalizedTheta < 0) normalizedTheta += 360.0;
-  
-  // Print main telemetry
-  LOG_INFO("[DATA],%d,%.2f,%.2f,%.2f,%.1f,%.1f", 
-            pros::millis(), pose->x, pose->y, normalizedTheta,
-            leftVelocity, rightVelocity);
+  // Lambda to prevent `return;` from exiting loop
+  [this]() -> void {
+    auto pose = m_getPose ? m_getPose() : std::nullopt;
+    if (!pose) return;
+    
+    double normalizedTheta = fmod(pose->theta, 360.0); // Normalize theta 
+    if (normalizedTheta < 0) normalizedTheta += 360.0;
+    
+    // Print main telemetry
+    LOG_INFO("[DATA],%d,%.2f,%.2f,%.2f,%.1f,%.1f", 
+              pros::millis(), pose->x, pose->y, normalizedTheta,
+              leftVelocity, rightVelocity);
+  }();
 }
 } // namespace mvlib

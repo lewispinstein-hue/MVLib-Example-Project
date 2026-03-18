@@ -33,6 +33,8 @@ public:
   inline static constexpr int PADDING = 5;
   ///< approx width per char in pixels
   static constexpr int CHAR_WIDTH = 8;
+  ///< approx height per char in pixels
+  static constexpr int CHAR_HEIGHT = 12;
 
   // UI Styling
 
@@ -57,16 +59,9 @@ public:
     bool locked = false;
 
     explicit inline MutexGuard(pros::Mutex &m) : m(m) { locked = m.take(); }
+    explicit inline MutexGuard(pros::Mutex &m, uint32_t timeout) : m(m) { locked = m.take(timeout); }
 
-    explicit inline MutexGuard(pros::Mutex &m, uint32_t timeout) : m(m) {
-      locked = m.take(timeout);
-    }
-
-    ~MutexGuard() {
-      if (locked) {
-        m.give();
-      }
-    }
+    ~MutexGuard() { if (locked) m.give(); }
 
     bool isLocked() const { return locked; }
     MutexGuard(const MutexGuard &) = delete;
@@ -107,14 +102,6 @@ public:
    * @brief Clears the screen and resets the internal line buffer.
    */
   void clearScreen();
-
-  /// Maximum number of rows displayed before scrolling occurs. For
-  /// printToScreen
-  static constexpr int maxRows = 11;
-  /// Vertical spacing between text lines in pixels. For printToScreen
-  static constexpr int rowHeight = 18;
-  /// Left margin for text in pixels. For printToScreen
-  static constexpr int xPosition = 20;
 
   /**
    * @brief Formats and displays scrolling text on the Robot Brain.
@@ -159,7 +146,7 @@ public:
     logicalLines.push_back(formatted.substr(pos));
 
     // Automatic text wrapping (naive)
-    size_t maxCharsPerLine = (SCREEN_WIDTH - x)/ CHAR_WIDTH;
+    size_t maxCharsPerLine = (SCREEN_WIDTH - x) / CHAR_WIDTH;
 
     for (const auto& line : logicalLines) {
       size_t start = 0;
@@ -185,7 +172,7 @@ public:
         }
       }
     }
-
+    uint16_t MAX_ROWS_WITH_OFFSET = std::ceil((SCREEN_HEIGHT - y) / CHAR_HEIGHT);
     // Clamp the number of lines
     while (textLines.size() > MAX_ROWS) textLines.erase(textLines.begin());
 

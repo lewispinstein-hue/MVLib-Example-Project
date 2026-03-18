@@ -4,10 +4,11 @@
 #include <cstdint>
 
 void initialize() {
+  pros::screen::erase();
   mvlib::setOdom(logger, &chassis);
   logger.setRobot({
-    .leftDrivetrain = &left_mg,
-    .rightDrivetrain = &right_mg
+    .leftDrivetrain = &leftMg,
+    .rightDrivetrain = &rightMg
   });
   logger.setLoggerMinLevel(mvlib::LogLevel::DEBUG);
   chassis.calibrate();
@@ -34,6 +35,16 @@ double expoTurn(double input, double expoTurn, double deadband) {
   double blended = 0.38 * linear + 0.42 * exponential;
   if (fabs(blended) >= 1) return 127 * ((norm >= 0) ? 1 : -1);
   return blended * 90.0;
+}
+
+void screenTask() {
+  namespace screen = pros::screen;
+  // Pose
+  lemlib::Pose pose = chassis.getPose();
+  screen::print(pros::E_TEXT_SMALL, 0, 5, 
+                "X: %.2f | Y: %.2f | T: %.2f", pose.x, pose.y, pose.theta);
+  screen::print(pros::E_TEXT_SMALL, 0, 25, 
+                "Back: %d | Front: %d", rearDist.get_distance(), frontDist.get_distance());
 }
 
 void disabled() {}
