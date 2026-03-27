@@ -1,7 +1,5 @@
 #include "main.h" 
-#include "mvlib/core.hpp"
-#include "mvlib/logMacros.h"
-#include "pros/misc.hpp"
+#include "globals.hpp"
 
 namespace control {
 
@@ -143,36 +141,23 @@ void initialize() {
   
   logger.start();
   setupWatches();
-
-  auto c1 = logger.addWaypoint("Waypoint 1", {
-    .tarX = 0, 
-    .tarY = 10,
-    .tarT = 30,
-    .timeoutMs = 10_mvS,
-    .linearTol = 5,
-    .thetaTol = 10,
-    .logOffsetEveryMs = 5_mvS
-  });
-
-  auto cp2 = logger.addWaypoint("Waypoint 2", {
-    .tarX = 20, 
-    .tarY = 20,
-    .tarT = 90,
-    .timeoutMs = 30_mvS,
-    .linearTol = 5,
-    .thetaTol = 1,
-    .logOffsetEveryMs = 5_mvS
-  });
 }
 
 void screenTask() {
-  pros::screen::erase_rect(0, 5, 270, 45);
+  pros::screen::erase_rect(0, 5, 270, 65);
   // Pose
   lemlib::Pose pose = chassis.getPose();
   pros::screen::print(pros::E_TEXT_SMALL, 0, 5, 
                 "X: %.2f | Y: %.2f | T: %.2f", pose.x, pose.y, pose.theta);
   pros::screen::print(pros::E_TEXT_SMALL, 0, 25, 
                 "Back: %d | Front: %d", rearDist.get_distance(), frontDist.get_distance());
+
+  pros::screen::print(pros::E_TEXT_SMALL, 0, 45, 
+                      "Waypoint Distances (lin, ang): PZ: %.2f, null | ML: %.2f, %.1f | HG: %.2f, %.1f", 
+                      PZ.getOffset().totalOffset,
+                      ML.getOffset().totalOffset, ML.getOffset().offT.value_or(0),
+                      HG.getOffset().totalOffset, HG.getOffset().offT.value_or(0));
+
   
   pros::delay(50);
 }

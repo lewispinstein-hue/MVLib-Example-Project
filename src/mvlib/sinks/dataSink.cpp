@@ -19,8 +19,7 @@ const char *Logger::m_levelToString(const LogLevel& level) const {
 }
 
 void Logger::logMessage(LogLevel level, const char *fmt, ...) {
-  bool isOffLevel = level == LogLevel::OFF || level == LogLevel::NONE;
-  if (level < m_minLogLevel || isOffLevel || !(uint8_t)m_minLogLevel) return;
+  if (level < m_minLogLevel || (int)level <= 0 || !(int)m_minLogLevel) return;
 
   unique_lock m(m_terminalMutex);
   if (!m.isLocked()) return;

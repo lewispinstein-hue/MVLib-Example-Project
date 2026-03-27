@@ -1,5 +1,6 @@
 #include "globals.hpp"
 #include "chassisEventListener.hpp"
+#include "mvlib/waypoint.hpp"
 #include "pros/misc.hpp"
 
 pros::Controller controller(CONTROLLER_MASTER);
@@ -70,6 +71,31 @@ lemlib::Chassis chassis(drivetrain,
 
 screen::Manager disp;
 mvlib::Logger& logger = mvlib::Logger::getInstance();
+
+mvlib::WaypointHandle PZ = logger.addWaypoint("Parking Zone", {
+  .tarX = 60, 
+  .tarY = -2,
+  .timeoutMs = 50_mvS,
+  .linearTol = 3.5,
+});
+
+mvlib::WaypointHandle ML = logger.addWaypoint("Match Loader", {
+  .tarX = 65.5, 
+  .tarY = 47,
+  .tarT = 90,
+  .timeoutMs = 8_mvS,
+  .linearTol = 1,
+  .thetaTol = 10,
+});
+
+mvlib::WaypointHandle HG = logger.addWaypoint("High Goal", {
+.tarX = 24, 
+.tarY = 47,
+.tarT = 90,
+.timeoutMs = 15_mvS,
+.linearTol = 1,
+.thetaTol = 5,
+});
 
 void handleController() {
   typedef enum class ControllerButton {

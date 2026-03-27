@@ -671,31 +671,31 @@ private:
   // Waypoint internals
   // ------------------------------------------------------------------------
   struct InternalWaypoint {
-    CPId id{};               /// Internal ID
+    WPId id{};               /// Internal ID
     std::string name{};      /// Name as inputted by user
-    WaypointParams params{}; /// Waypoint parameters
+    WaypointParams params; /// Waypoint parameters
     uint32_t lastPrintMs{};  /// Last time the waypoint was printed (params.printOffsetEveryMs)
-    uint32_t startTimeMs{};    /// Creation time of the waypoint
+    uint32_t startTimeMs;    /// Creation time of the waypoint
     bool active = true;      /// Is the waypoint active (not yet reached or timed out)?
   };
 
   /// @brief Waypoint registry
-  std::vector<InternalWaypoint> m_waypoints{};
+  std::vector<InternalWaypoint> m_waypoints;
 
-  /// @brief Get the offset of the robot in WaypointOffset from the CPId
-  WaypointOffset getWaypointOffset(CPId id);
+  /// @brief Get the offset of the robot in WaypointOffset from the WPId
+  WaypointOffset getWaypointOffset(WPId id);
 
-  /// @brief Get the params of the CPId 
-  WaypointParams getWaypointParams(CPId id);
+  /// @brief Get the params of the WPId 
+  WaypointParams getWaypointParams(WPId id);
 
-  /// @brief Get the name of the CPId
-  std::string getWaypointName(CPId id);
+  /// @brief Get the name of the WPId
+  std::string getWaypointName(WPId id);
 
-  /// @brief Returns true if the robot has reached the CPId
-  bool isWaypointReached(CPId id);
+  /// @brief Returns true if the robot has reached the WPId
+  bool isWaypointReached(WPId id);
 
-  /// @brief Returns true if the CPId is actively being tracked
-  bool isWaypointActive(CPId id);
+  /// @brief Returns true if the WPId is actively being tracked
+  bool isWaypointActive(WPId id);
 
   /// @brief Print all waypoints that are due
   void printWaypoints();

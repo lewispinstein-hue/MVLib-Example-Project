@@ -25,7 +25,7 @@ static void formatOffsetSafe(char* buf, size_t len, const WaypointOffset& off) {
            off.remainingTimeout.has_value() ? std::to_string(off.remainingTimeout.value()).c_str() : "NA");
 }
 
-WaypointOffset Logger::getWaypointOffset(CPId id) {
+WaypointOffset Logger::getWaypointOffset(WPId id) {
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                          [id](const InternalWaypoint& ic) { return ic.id == id; });
   
@@ -58,6 +58,9 @@ WaypointOffset Logger::getWaypointOffset(CPId id) {
       offset.remainingTimeout = it->params.timeoutMs.value() - elapsed;
       offset.timedOut = false;
     }
+  } else {
+    offset.remainingTimeout = std::nullopt;
+    offset.timedOut = false;
   }
 
   // Reached Logic
@@ -70,15 +73,15 @@ WaypointOffset Logger::getWaypointOffset(CPId id) {
   return offset;
 }
 
-WaypointParams Logger::getWaypointParams(CPId id) {
+WaypointParams Logger::getWaypointParams(WPId id) {
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
   return it->params;
 }
 
-bool Logger::isWaypointReached(CPId id) {
+bool Logger::isWaypointReached(WPId id) {
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
-                         [id](const InternalWaypoint& cp) { return cp.id == id; });
+                         [id](const InternalWaypoint& wp) { return wp.id == id; });
   
   if (it == m_waypoints.end() || !it->active) return false;
 
@@ -86,7 +89,7 @@ bool Logger::isWaypointReached(CPId id) {
   return offset.reached;
 }
 
-std::string Logger::getWaypointName(CPId id) {
+std::string Logger::getWaypointName(WPId id) {
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
   return (it != m_waypoints.end()) ? it->name : "";
@@ -94,36 +97,37 @@ std::string Logger::getWaypointName(CPId id) {
 
 static std::string formatParams(const WaypointParams& params) {
   char buf[256];
-  snprintf(buf, sizeof(buf), "%.2f,%.2f,%s,%s,%.2f,%s",
+  snprintf(buf, sizeof(buf), "%.2f,%.2f,%s,%s,%.2f,%s,%d",
            params.tarX, params.tarY,
            params.tarT.has_value() ? std::to_string(params.tarT.value()).c_str() : "NA",
            params.timeoutMs.has_value() ? std::to_string(params.timeoutMs.value()).c_str() : "NA",
            params.linearTol,
-           params.thetaTol.has_value() ? std::to_string(params.thetaTol.value()).c_str() : "NA");
+           params.thetaTol.has_value() ? std::to_string(params.thetaTol.value()).c_str() : "NA",
+           params.permanent ? 1 : 0); 
   return std::string(buf);
 }
 
 WaypointHandle Logger::addWaypoint(std::string name, WaypointParams details) {
   unique_lock lock(m_mutex);
 
-  CPId id = m_nextId++;
-  InternalWaypoint cp;
-  cp.id = id;
-  cp.name = std::move(name);
-  cp.params = details;
-  cp.startTimeMs = pros::millis();
-  cp.active = true;
+  WPId id = m_nextId++;
+  InternalWaypoint wp;
+  wp.id = id;
+  wp.name = std::move(name);
+  wp.params = details;
+  wp.startTimeMs = pros::millis();
+  wp.active = true;
 
-  // Use the ID before moving cp into the vector
-  m_waypoints.push_back(std::move(cp));
+  // Use the ID before moving wp into the vector
+  m_waypoints.push_back(std::move(wp));
 
-  LOG_INFO("[WPOINT],%u,CREATED,%" PRIu64 ",%s,%s",
+  LOG_INFO("[WPOINT],%d,CREATED,%" PRIu64 ",%s,%s",
            pros::millis(), id, m_waypoints.back().name.c_str(), 
            formatParams(details).c_str());
   return WaypointHandle(id);
 }
 
-bool Logger::isWaypointActive(CPId id) {
+bool Logger::isWaypointActive(WPId id) {
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
   return (it != m_waypoints.end()) && it->active;

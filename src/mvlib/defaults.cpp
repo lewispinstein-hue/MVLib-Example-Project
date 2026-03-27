@@ -1,13 +1,15 @@
 #include "mvlib/core.hpp"
 #include "mvlib/logMacros.h"
 #include "pros/misc.hpp"
+#include <sys/types.h>
 
 namespace mvlib {
 
 struct WatchInfo {
-  int16_t currVal = -1;
-  int16_t prevVal = -1;
-  int value{};
+  int16_t currVal{0};
+  int16_t prevVal{0};
+  int displayValue{0};
+  
 };  
 
 bool Logger::setDefaultWatches(const DefaultWatches& watches) {
@@ -16,24 +18,27 @@ bool Logger::setDefaultWatches(const DefaultWatches& watches) {
     return false;
   }
 
+  constexpr uint TEMP_THRESHOLD = 50;
   if (watches.leftDrivetrainWatchdog) {
     WatchInfo leftDT{}; 
+    leftDT.currVal = 0;
+    leftDT.prevVal = 0;
     Logger::getInstance().watch("Left Drivetrain OK:", LogLevel::INFO, true,
       [&]() {
         uint temp = m_pLeftDrivetrain ? m_pLeftDrivetrain->get_temperature() : 0;
         leftDT.currVal = temp;
 
         // Case 1: not overheating -> overheating
-        if (leftDT.currVal >= 50 && leftDT.prevVal < 50) leftDT.value = leftDT.currVal;
+        if (leftDT.currVal >= TEMP_THRESHOLD && leftDT.prevVal < TEMP_THRESHOLD) leftDT.displayValue = leftDT.currVal;
         // Case 2: overheating -> not overheating
-        else if (leftDT.currVal <= 50 && leftDT.prevVal > 50) leftDT.value = leftDT.currVal;
+        else if (leftDT.currVal <= TEMP_THRESHOLD && leftDT.prevVal > TEMP_THRESHOLD) leftDT.displayValue = leftDT.currVal;
 
         leftDT.prevVal = leftDT.currVal;
-        return leftDT.value;
+        return leftDT.displayValue;
       }, 
         LevelOverride<int>{
         .elevatedLevel = LogLevel::WARN,
-        .predicate = PREDICATE(v > 50),
+        .predicate = PREDICATE(v > TEMP_THRESHOLD),
         .label = "Left Drivetrain Overheating:"
       },
       "%d"
@@ -43,21 +48,23 @@ bool Logger::setDefaultWatches(const DefaultWatches& watches) {
 
   if (watches.rightDrivetrainWatchdog) {
     WatchInfo rightDT{};
+    rightDT.currVal = 0;
+    rightDT.prevVal = 0;
     Logger::getInstance().watch("Right Drivetrain OK:", LogLevel::INFO, true,
       [&]() {
         uint temp = m_pRightDrivetrain ? m_pRightDrivetrain->get_temperature() : 0;
         rightDT.currVal = temp;
 
         // Case 1: not overheating -> overheating
-        if (rightDT.currVal >= 50 && rightDT.prevVal < 50) rightDT.value = rightDT.currVal;
+        if (rightDT.currVal >= TEMP_THRESHOLD && rightDT.prevVal < TEMP_THRESHOLD) rightDT.displayValue = rightDT.currVal;
         // Case 2: overheating -> not overheating
-        else if (rightDT.currVal <= 50 && rightDT.prevVal > 50) rightDT.value = rightDT.currVal;
+        else if (rightDT.currVal <= TEMP_THRESHOLD && rightDT.prevVal > TEMP_THRESHOLD) rightDT.displayValue = rightDT.currVal;
 
         rightDT.prevVal = rightDT.currVal;
-        return rightDT.value;
+        return rightDT.displayValue;
       }, LevelOverride<int>{
         .elevatedLevel = LogLevel::WARN,
-        .predicate = PREDICATE(v > 50),
+        .predicate = PREDICATE(v > TEMP_THRESHOLD),
         .label = "Right Drivetrain Overheating:"
       },
       "%d"
@@ -66,31 +73,61 @@ bool Logger::setDefaultWatches(const DefaultWatches& watches) {
   }
 
   if (watches.batteryWatchdog) {
-    static bool forceBatteryPredicate = false;
-    Logger::getInstance().watch("NULL", LogLevel::OFF, true,
-      [&]() {
+    WatchInfo batTemp{};
+    batTemp.currVal = pros::battery::get_temperature();
+    batTemp.prevVal = batTemp.currVal;
+    Logger::getInstance().watch("Battery Temp OK:", LogLevel::INFO, true,
+      [&]() -> uint {
         uint temp = pros::battery::get_temperature();
-        uint32_t voltage = pros::battery::get_voltage();
-        uint32_t current = pros::battery::get_current();
+        batTemp.currVal = temp;
 
-        if (temp >= 50 ||
-            voltage <= 3000 ||
-            current >= 5000) {
-          forceBatteryPredicate = true;
-        } else {
-          forceBatteryPredicate = false;
-        }
-        return std::format(",{},{},{},", temp, voltage, current);
+        if (batTemp.currVal >= TEMP_THRESHOLD && batTemp.prevVal < TEMP_THRESHOLD) batTemp.displayValue = batTemp.currVal;
+        else if (batTemp.currVal <= TEMP_THRESHOLD && batTemp.prevVal > TEMP_THRESHOLD) batTemp.displayValue = batTemp.currVal;
+
+        batTemp.prevVal = batTemp.currVal;
+        return batTemp.displayValue;
       },
-      LevelOverride<std::string>{
+      LevelOverride<uint>{
         .elevatedLevel = LogLevel::WARN,
-        .predicate = asPredicate<std::string>([&](const std::string&) -> bool {
-          return forceBatteryPredicate;
-        }),
-        .label = "Battery Warning:"
+        .predicate = PREDICATE(v > 45),
+        .label = "Battery Temp High:"
       }, 
-      "%s"
+      "%d"
     );
+    LOG_INFO("Created default Battery Temperature Watch");
+
+    WatchInfo batVolt{};
+    // Init
+    batVolt.currVal = pros::battery::get_voltage();
+    batVolt.prevVal = batVolt.currVal;
+    constexpr uint MIN_BATTERY_VOLTAGE = 11200;
+    constexpr uint MAX_BATTERY_VOLTAGE = 13000;
+
+    Logger::getInstance().watch("Battery Voltage OK:", LogLevel::INFO, true,
+      [&]() -> uint {
+        uint curr = pros::battery::get_voltage();
+        uint prev = batVolt.prevVal;
+
+        bool currBad = (curr < MIN_BATTERY_VOLTAGE || curr > MAX_BATTERY_VOLTAGE);
+        bool prevBad = (prev < MIN_BATTERY_VOLTAGE || prev > MAX_BATTERY_VOLTAGE);
+
+        // Only trigger on transitions between GOOD <-> BAD
+        if (currBad != prevBad) {
+          batVolt.displayValue = curr;
+        }
+
+        batVolt.prevVal = curr;
+        return batVolt.displayValue;
+      },
+      LevelOverride<uint>{
+        .elevatedLevel = LogLevel::WARN,
+        .predicate = PREDICATE(v < MIN_BATTERY_VOLTAGE || v > MAX_BATTERY_VOLTAGE),
+        .label = "Battery Voltage Anomaly:"
+      }, 
+      "%d"
+    );
+
+    LOG_INFO("Created default Battery Voltage Watch");
   }
 
   return true;

@@ -5,7 +5,7 @@
 #include <string>
 
 namespace mvlib {
-using CPId = uint64_t;
+using WPId = uint64_t;
 
 /**
  * @struct Waypoint
@@ -33,6 +33,10 @@ struct WaypointParams {
 
   /// @brief Print the offset of the waypoint every N ms (optional)
   std::optional<uint32_t> logOffsetEveryMs = std::nullopt;
+
+  /// @brief Make waypoint permanent. It will always log when reached, 
+  ///        never timeout, and never deactivate.
+  bool permanent = false;
 };
 
 struct WaypointOffset {
@@ -65,9 +69,9 @@ struct WaypointOffset {
 class WaypointHandle {
 private:
   /// ID of the waypoint
-  CPId m_id; 
+  WPId m_id; 
   friend class Logger; 
-  explicit WaypointHandle(CPId id) : m_id(id) {}
+  explicit WaypointHandle(WPId id) : m_id(id) {}
 
 public:
   /** 

@@ -232,7 +232,7 @@ void Logger::Update() {
   }
 
   auto pose = m_getPose ? m_getPose() : std::nullopt;
-  if (m_config.logToTerminal.load() && pose.has_value()) {
+  if (m_config.printTelemetry.load() && pose.has_value()) {
     double normalizedTheta = fmod(pose->theta, 360.0); // Normalize theta 
     if (normalizedTheta < 0) normalizedTheta += 360.0;
     

@@ -16,25 +16,28 @@ void Logger::printWaypoints() {
   uint32_t nowMs = pros::millis();
   char buffer[256];
   
-  for (auto& cp : m_waypoints) {
-    if (!cp.active) continue; 
+  for (auto& wp : m_waypoints) {
+    if (!wp.active) continue; 
 
-    WaypointOffset off = getWaypointOffset(cp.id);
-    std::optional<uint32_t> printEveryMs = cp.params.logOffsetEveryMs;
+    WaypointOffset off = getWaypointOffset(wp.id);
+    bool perpetual = wp.params.permanent;
 
-    snprintf(buffer, sizeof(buffer), "%.2f,%.2f,%.2f,%d",
-          off.offX, off.offY,
-          off.offT.value_or(0.0), off.remainingTimeout.value_or(0));
+    std::optional<uint32_t> printEveryMs = wp.params.logOffsetEveryMs;
 
     if (off.reached) {
-      LOG_INFO("[WPOINT],%u,REACHED,%" PRIu64 ",%s,%s", nowMs, cp.id, cp.name.c_str(), buffer);
-      cp.active = false; 
+      LOG_INFO("[WPOINT],%u,REACHED,%" PRIu64 ",%s", nowMs, wp.id, wp.name.c_str());
+      wp.active = perpetual; // Dynamic based on if perpetual
     } else if (off.timedOut.value_or(false)) {
-      LOG_INFO("[WPOINT],%u,TIMEDOUT,%" PRIu64 ",%s,%s", nowMs, cp.id, cp.name.c_str(), buffer);
-      cp.active = false;
-    } else if (printEveryMs.has_value() && nowMs - cp.lastPrintMs >= printEveryMs.value()) {
-      LOG_INFO("[WPOINT],%u,OFFSET,%" PRIu64 ",%s,%s", nowMs, cp.id, cp.name.c_str(), buffer);      
-      cp.lastPrintMs = nowMs;
+      LOG_INFO("[WPOINT],%u,TIMEDOUT,%" PRIu64 ",%s", nowMs, wp.id, wp.name.c_str());
+      wp.active = false;
+    } else if (printEveryMs.has_value() && nowMs - wp.lastPrintMs >= printEveryMs.value()) {
+      snprintf(buffer, sizeof(buffer), "%.2f,%.2f,%.2f,%d",
+               off.offX, off.offY,
+               off.offT.value_or(0.0), off.remainingTimeout.value_or(0));
+
+      LOG_INFO("[WPOINT],%u,OFFSET,%" PRIu64 ",%s,%s",
+              nowMs, wp.id, wp.name.c_str(), buffer);      
+      wp.lastPrintMs = nowMs;
     }
   }
 }

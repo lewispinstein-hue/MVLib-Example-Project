@@ -31,8 +31,6 @@ void Logger::printWatches() {
       if (w.lastValue && *w.lastValue == valueStr) continue;
       w.lastValue = valueStr;
     } else if (!w.onChange) w.lastPrintMs = nowMs;
-
-    if (lvl == LogLevel::NONE || lvl == LogLevel::OFF) continue;
     
     // Add watch tag and add comma separators
     label = std::string("[WATCH],") +

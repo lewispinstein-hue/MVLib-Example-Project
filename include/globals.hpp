@@ -39,6 +39,11 @@ extern pros::Distance frontDist;
 void handleController();
 void setupWatches();
 
+extern mvlib::WaypointHandle HG;
+extern mvlib::WaypointHandle ML;
+extern mvlib::WaypointHandle PZ;
+
+
 /**
  * @brief Returns the average value of the vector.
  * 
