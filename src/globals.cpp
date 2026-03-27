@@ -152,7 +152,6 @@ void handleController() {
   break;
 
   case ControllerButton::BTN_Y:
-  LOG_INFO("Status: %d", logger.status());
   break;
 
   case ControllerButton::BTN_X:
@@ -176,6 +175,7 @@ void handleController() {
 }
 
 void setupWatches() {
+  logger.setDefaultWatches({/* Defaults */});
   logger.watch("Left Drive Temp", mvlib::LogLevel::INFO, 10_mvS,
   []() { return avg<double, float>(leftMg.get_temperature_all()); },
   mvlib::LevelOverride<float>{

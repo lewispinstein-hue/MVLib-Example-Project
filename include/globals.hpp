@@ -1,13 +1,12 @@
 #pragma once
 
 // Global hardware and control instances shared across the robot code.
-#include "pros/adi.hpp"
 #define PROS_USE_SIMPLE_NAMES
 
 // IWYU pragma: begin_keep
 #include "api.h"
 #include "lemlib/api.hpp"
-#include "mvlib/Optional/logger_optional_lemlib.hpp"
+#include "mvlib/Optional/lemlib.hpp"
 #include "mvlib/core.hpp"
 #include "screen.hpp"
 // IWYU pragma: end_keep
@@ -40,12 +39,24 @@ extern pros::Distance frontDist;
 void handleController();
 void setupWatches();
 
+/**
+ * @brief Returns the average value of the vector.
+ * 
+ * @tparam T The type of the vector (can usually be deduced)
+ * @tparam rtn The return type (defaults to double)
+ * @param v 
+ * @return rtn casted average of the vector, skipping non-finite values
+*/
 template<class T, class rtn = double>
 requires (std::is_arithmetic_v<T> && std::is_arithmetic_v<rtn>)
 rtn avg(const std::vector<T>& v) {
+  if (v.empty()) return 0;
   rtn num = 0;
+  size_t iter = 0;
   for (auto& e : v) {
+    if (!std::isfinite(e)) continue; 
     num += e;
+    iter++;
   }
-  return v.empty() ? 0 : num /= v.size();
+  return num /= iter;
 }

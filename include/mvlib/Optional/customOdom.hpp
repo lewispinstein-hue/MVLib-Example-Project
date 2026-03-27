@@ -1,16 +1,16 @@
 #pragma once
 
 /**
- * @file logger_optional_custom_odom.hpp
+ * @file customOdom.hpp
  * @brief Optional Logger adapter for any custom or unsupported odometry.
  */
 
 #ifdef _MVLIB_OPTIONAL_USED
 #error "More than one type of Logger/Optional include used!"
-#endif
+#endif // _MVLIB_OPTIONAL_USED
 
 #ifndef _MVLIB_OPTIONAL_USED
-#define _MVLIB_OPTIONAL_USED
+#define _MVLIB_OPTIONAL_USED "customOdom"
 #include "mvlib/core.hpp" // IWYU pragma: keep
 
 #include <optional>
@@ -45,19 +45,17 @@ namespace mvlib {
  * 3) Return std::nullopt while invalid/uninitialized
  *
  * @code{.cpp}
- * #include "mvlib/Optional/logger_optional_custom_odom.hpp"  
- * #include <cmath>
- * #include <optional>
+ * #include "mvlib/api.hpp"
+ * #include "mvlib/Optional/customOdom.hpp"  
  * 
  * // Custom / Unsupported odom
  * #include "mylib.hpp"
  *
  * 
  * void initialize() {
- *   auto& logger = mvlib::Logger::getInstance();
- *   mvlib::setOdom(logger, []() -> std::optional<mvlib::Pose> {
+ *   mvlib::setOdom([]() -> std::optional<mvlib::Pose> {
  *     if (!customOdomReady()) {
- *       // Odom not initialized yet; downstream should treat as "no pose available".
+ *       // Odom not initialized yet; should treat as "no pose available".
  *       return std::nullopt;
  *     }
  *
@@ -72,14 +70,13 @@ namespace mvlib {
  * @endcode
  */
 template <class Fn>
-inline void setOdom(Logger& logger, Fn&& poseGetter)
+inline void setOdom(Fn&& poseGetter)
   requires std::is_same_v<std::invoke_result_t<Fn&>, std::optional<Pose>> {
   auto getter = std::forward<Fn>(poseGetter);
 
-  logger.setPoseGetter([getter = std::move(getter)]() mutable -> std::optional<Pose> {
+  mvlib::Logger::getInstance().setPoseGetter([getter = std::move(getter)]() mutable -> std::optional<Pose> {
     return getter();
   });
 }
 } // namespace mvlib
-#endif
-
+#endif // _MVLIB_OPTIONAL_USED

@@ -1,5 +1,6 @@
 #include "chassisEventListener.hpp"
-#include "mvlib/core.hpp"
+#define MVLIB_USE_SIMPLES
+#include "mvlib/api.hpp"
 #include <sstream>
 
 namespace c {
@@ -17,7 +18,7 @@ std::string directionToString(lemlib::AngularDirection direction) {
   case lemlib::AngularDirection::AUTO:
   default: return "AUTO";
   }
-  UNREACHABLE();
+  __builtin_unreachable();
 }
 
 std::string moveToPointParamsToString(const lemlib::MoveToPointParams& params) {

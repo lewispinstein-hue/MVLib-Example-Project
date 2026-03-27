@@ -1,22 +1,22 @@
 #pragma once
 
 /**
- * @file logger_optional_okapi.hpp
+ * @file okapi.hpp
  * @brief Optional Logger adapter for OkAPI odometry.
  */
 
 #ifdef _MVLIB_OPTIONAL_USED
 #error "More than one type of Logger/Optional include used!"
-#endif
+#endif // _MVLIB_OPTIONAL_USED
 
 #ifndef _MVLIB_OPTIONAL_USED
-#define _MVLIB_OPTIONAL_USED
+#define _MVLIB_OPTIONAL_USED "okapi"
 #include "mvlib/core.hpp" // IWYU pragma: keep
-#include "okapi/api.h"     // IWYU pragma: keep
+#include "okapi/api.h"    // IWYU pragma: keep
 
 #include <optional>
 namespace mvlib {
-    /**
+/**
  * @brief Attach an OkapiLib odometry getter to the Logger.
  *
  * This overload adapts OkapiLib's odometry state into mvlib's Pose so the Logger can
@@ -45,18 +45,18 @@ namespace mvlib {
  * @par Example
  * @code{.cpp}
  * // Suppose you built an Okapi odom chassis controller somewhere:
- * std::shared_ptr<okapi::OdomChassisController> odomChassis = okapi::ChassisControllerBuilder()
+ * okapi::OdomChassisController odomChassis = okapi::ChassisControllerBuilder()
  *   .withMotors({1, 2}, {-3, -4})
  *   .withDimensions(okapi::AbstractMotor::gearset::green, {{4_in, 11.5_in}, okapi::imev5GreenTPR})
  *   .withOdometry()
  *   .buildOdometry();
- *
- * mvlib::Logger logger;
- * mvlib::setOdom(logger, odomChassis.get());
+ * void initialize() {
+ *   mvlib::setOdom(&odomChassis);
+ * }
  * @endcode
  */
-inline void setOdom(Logger& logger, okapi::OdomChassisController* chassis) {
-  logger.setPoseGetter([chassis]() -> std::optional<Pose> {
+inline void setOdom(okapi::OdomChassisController* chassis) {
+  mvlib::Logger::getInstance().setPoseGetter([chassis]() -> std::optional<Pose> {
     if (!chassis) return std::nullopt;
 
     const auto s = chassis->getState();
@@ -69,4 +69,4 @@ inline void setOdom(Logger& logger, okapi::OdomChassisController* chassis) {
   });
 }
 } // 
-#endif
+#endif // _MVLIB_OPTIONAL_USED

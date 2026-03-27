@@ -1,12 +1,16 @@
 #include "pros/rtos.hpp"
 #include "mvlib/core.hpp"
-#include <cstdarg>
-#include <cstring>
+#include "mvlib/logMacros.h"
+#include "mvlib/config.hpp"
 #include <cmath>
-#include <sys/stat.h> 
-#include <random>
 
 #ifdef MVLIB_LOGS_REDEFINED
+#undef LOG_DEBUG
+#undef LOG_INFO
+#undef LOG_WARN
+#undef LOG_ERROR
+#undef LOG_FATAL
+
 #define LOG_DEBUG MVLIB_LOG_DEBUG
 #define LOG_INFO MVLIB_LOG_INFO
 #define LOG_WARN MVLIB_LOG_WARN
@@ -40,14 +44,24 @@ void Logger::setPrintWatches(bool v) {
   LOG_DEBUG("printWatches set to: %d", v);
 }
 
+void Logger::setPrintTelemetry(bool v) {
+  m_config.printTelemetry.store(v);
+  LOG_DEBUG("printTelemetry set to: %d", v);
+}
+
+void Logger::setPrintWaypoints(bool v) {
+  m_config.printWaypoints.store(v);
+  LOG_DEBUG("printWaypoints set to: %d", v);
+}
+
 void Logger::setLoggerMinLevel(LogLevel level) {
   LOG_DEBUG("SetLoggerMinLevel set to: %d", (int)level);
   m_minLogLevel = level;
 }
 
 void Logger::setPoseGetter(std::function<std::optional<Pose>()> getter) {
-  MutexGuard m(m_mutex, TIMEOUT_MAX);
-  if (!m.isLocked()) return;
+  unique_lock m(m_mutex, TIMEOUT_MAX);
+  if (!m.isLocked() || !getter) return;
   m_getPose = std::move(getter);
 }
 
@@ -70,126 +84,8 @@ bool Logger::setRobot(Drivetrain drivetrain) {
   return true;
 }
 
-const char *Logger::m_levelToString(const LogLevel level) const {
-  switch (level) {
-  case LogLevel::DEBUG: return "DEBUG";
-  case LogLevel::INFO:  return "INFO";
-  case LogLevel::WARN:  return "WARN";
-  case LogLevel::ERROR: return "ERROR";
-  case LogLevel::FATAL: return "FATAL";
-  default:              return "UNKNOWN";
-  }
-  UNREACHABLE();
-}
-
-void Logger::logMessage(LogLevel level, const char *fmt, ...) {
-  if (level < m_minLogLevel || !(int)m_minLogLevel) return;
-
-  MutexGuard m(m_terminalMutex);
-  if (!m.isLocked()) return;
-
-  char buffer[1024];
-  va_list args;
-  va_start(args, fmt);
-  vsnprintf(buffer, sizeof(buffer), fmt, args);
-  va_end(args);
-
-  double time = pros::millis() / 1000.0;
-  if (m_config.logToTerminal.load()) 
-    printf("[%.2f] [%s]: %s\n", time, m_levelToString(level), buffer);
-
-  if (m_config.logToSD.load()) 
-    logToSD(m_levelToString(level), "%s", buffer);
-}
-
-static inline int getrandInt() {
-    uint64_t seed = pros::micros();
-    seed ^= (uint64_t)pros::battery::get_voltage() << 32;
-    seed ^= (uint64_t)pros::battery::get_current();
-    
-    std::mt19937 gen(seed);
-    std::uniform_int_distribution<> dis(0, 9999);
-    return dis(gen);
-}
-
-void Logger::m_makeTimestampedFile() {
-  time_t now = time(0);
-  tm *tstruct = localtime(&now);
-
-  // Add random variance to filename to avoid overwriting existing files
-  const int randint = getrandInt();
-  
-  if (tstruct->tm_year < 100) {
-    LOG_INFO("VEX RTC Inaccurate. Falling back to program duration and last upload date.");
-    snprintf(m_currentFilename, sizeof(m_currentFilename), "/usd/MVLIB_%s_%u-%u_%d.log",
-             date, pros::millis() / 1000, pros::millis() / 100, randint);
-  } else {
-    LOG_INFO("VEX RTC Plausible. Creating file name with date.");
-    strftime(m_currentFilename, sizeof(m_currentFilename),
-             "/usd/MVLIB_%Y-%m-%d_%H-%M.log", tstruct);
-  }
-} 
-
-bool Logger::m_initSDLogger() {
-  if (pros::usd::is_installed()) {
-    LOG_DEBUG("SD Card installed (On first attempt)");
-    pros::delay(500);
-  } else {
-    LOG_DEBUG("SD Card not installed, rechecking...");
-    for (int i = 0; i < 10; i++) {
-      if (pros::usd::is_installed()) {
-        LOG_DEBUG("SD Card installed! Attempt: %d/10", i);
-        break;
-      }
-      LOG_DEBUG("Rechecking SD card installment... Attempts: %d/10", i);
-      pros::delay(200);
-    }
-  }
-
-  if (!pros::usd::is_installed()) {
-    LOG_FATAL("SD Card not installed after 10 attemps. Aborting SD card.");
-    return false;
-  }
-
-  m_makeTimestampedFile();
-
-  m_sdFile = fopen(m_currentFilename, "w");
-  if (!m_sdFile) {
-    LOG_FATAL("File: %s could not be opened. Aborting.", m_currentFilename);
-    return false;
-  }
-  LOG_DEBUG("File successfully opened.");
-  fprintf(m_sdFile, "=== Logger initialized at %.2fs ===\n", pros::millis() / 1000.0);
-  fflush(m_sdFile);
-  return true;
-}
-
-void Logger::logToSD(const char *levelStr, const char *fmt, ...) {
-  if (!m_sdFile || m_sdLocked) return;
-
-  MutexGuard m(m_sdCardMutex);
-  if (!m.isLocked()) return;
-  uint32_t now = pros::millis();
-
-  fprintf(m_sdFile, "[%.2f] [%s]: ", now / 1000.0, levelStr);
-
-  va_list args;
-  va_start(args, fmt);
-  vfprintf(m_sdFile, fmt, args);
-  va_end(args);
-
-  fprintf(m_sdFile, "\n");
-
-  bool isError = (strcmp(levelStr, "ERROR") == 0 || strcmp(levelStr, "FATAL") == 0);
-
-  if (isError || (now - m_lastFlush >= SD_FLUSH_INTERVAL_MS)) {
-    fflush(m_sdFile);
-    m_lastFlush = now;
-  }
-}
-
 bool Logger::m_checkRobotConfig() {
-  MutexGuard m(m_mutex, TIMEOUT_MAX);
+  unique_lock m(m_mutex, TIMEOUT_MAX);
 
   bool allValid = true;
 
@@ -242,7 +138,7 @@ void Logger::start() {
       m_config.logToSD.store(false);
       m_sdLocked = true;
       LOG_FATAL("initSDCard failed! Unable to initialize SD card.");
-    } else LOG_INFO("Successfully initialized SD card with filename: %s!", m_currentFilename);
+    } else LOG_INFO("Successfully initialized SD card with filename: %s", m_currentFilename);
   }
     
   // Check config
@@ -266,46 +162,15 @@ void Logger::start() {
       // Flush stdout buffer, and wait appropriate time
       if (m_config.logToTerminal.load()) {
         fflush(stdout); // Stdout is only flushed if logging to terminal
-        pros::delay(terminalPollingRate);
-      } else pros::delay(sdCardPollingRate);
+        pros::delay(TERMINAL_POLLING_RATE_MS);
+      } else pros::delay(SD_POLLING_RATE_MS);
     }
   }, TASK_PRIORITY_DEFAULT, TASK_STACK_DEPTH_DEFAULT, "mvlib Logger");
 }
 
-void Logger::printWatches() {
-  uint32_t nowMs = pros::millis();
-  for (auto &[id, w] : m_watches) {
-    // Gate evaluation frequency for not onChange watches
-    if (!w.onChange && w.lastPrintMs != 0 &&
-       (nowMs - w.lastPrintMs) < w.intervalMs) continue;
-
-    if (!w.eval) continue;
-
-    auto [lvl, valueStr, label] = w.eval();
-
-    if (w.onChange) {
-      if (w.lastValue && *w.lastValue == valueStr) continue;
-      w.lastValue = valueStr;
-    } else if (!w.onChange) w.lastPrintMs = nowMs;
-    
-    // Add watch tag and add comma separators
-    label = std::string("[WATCH],") +
-            std::to_string(nowMs) + 
-            "," + m_levelToString(lvl) 
-            +  "," + label + "," + valueStr;
-
-    switch (lvl) {
-      case LogLevel::DEBUG: LOG_DEBUG("%s", label.c_str()); break;
-      case LogLevel::INFO:  LOG_INFO("%s",  label.c_str()); break;
-      case LogLevel::WARN:  LOG_WARN("%s",  label.c_str()); break;
-      case LogLevel::ERROR: LOG_ERROR("%s", label.c_str()); break;
-      default:              LOG_INFO("%s",  label.c_str()); break;
-    }
-  }
-}
-
 void Logger::Update() {
   if (m_config.printWatches.load()) printWatches();
+  if (m_config.printWaypoints.load()) printWaypoints();
 
   static double leftVelocity, rightVelocity;
 
@@ -321,9 +186,7 @@ void Logger::Update() {
 
     static auto norm = [&](double rpm, pros::MotorGears gearset) {
       double v = (rpm / getGearsetValue(gearset)) * 127.0;
-      if (v > 127) v = 127;
-      if (v < -127) v = -127;
-      return v;
+      return std::clamp(v, -127.0, 127.0);
     };
 
     pros::MotorGears leftGearing = m_pLeftDrivetrain 
@@ -340,38 +203,44 @@ void Logger::Update() {
   } else {
     // Because no drivetrain, we do speed approx with pose
     auto pose = m_getPose ? m_getPose() : std::nullopt;
-    if (!pose) pose = {0, 0, 0};
 
-    uint32_t nowMs = pros::millis();
+
     static Pose prevPose;
-    static uint32_t prevMs = 0;
+    static uint32_t prevMs = pros::millis();
+    static double fallbackSpeed = 0.0;
     double avgSpeed = 0.0;
+    if (pose.has_value()) {
+      uint32_t nowMs = pros::millis();
 
-    double dt = (nowMs - prevMs) / 1000.0; // delta time
-    double vx = (dt > 0) ? pose->x - prevPose.x / dt : 0.0; // x velocity
-    double vy = (dt > 0) ? pose->y - prevPose.y / dt : 0.0; // y velocity
+      double dt = (nowMs - prevMs) / 1000.0; // delta time
+      double vx = (dt > 0) ? (pose->x - prevPose.x) / dt : 0.0;
+      double vy = (dt > 0) ? (pose->y - prevPose.y) / dt : 0.0;
 
-    // Update drivetrain speed
-    avgSpeed = (vx + vy) / 2.0;
-    leftVelocity = avgSpeed;
-    rightVelocity = avgSpeed;
+      // Update drivetrain speed
+      avgSpeed = std::sqrt(vx * vx + vy * vy);
+      leftVelocity = avgSpeed;
+      rightVelocity = avgSpeed;
+      fallbackSpeed = avgSpeed;
 
-    prevPose = *pose;
-    prevMs = nowMs;
+      prevPose = *pose;
+      prevMs = nowMs;
+    } else {
+      // Use last valid speed if no more pose information
+      leftVelocity = fallbackSpeed;
+      rightVelocity = fallbackSpeed;
+    }
   }
 
-  // Lambda to prevent `return;` from exiting loop
-  [this]() -> void {
-    auto pose = m_getPose ? m_getPose() : std::nullopt;
-    if (!pose) return;
-    
+  auto pose = m_getPose ? m_getPose() : std::nullopt;
+  if (m_config.logToTerminal.load() && pose.has_value()) {
     double normalizedTheta = fmod(pose->theta, 360.0); // Normalize theta 
     if (normalizedTheta < 0) normalizedTheta += 360.0;
     
     // Print main telemetry
-    LOG_INFO("[DATA],%d,%.2f,%.2f,%.2f,%.1f,%.1f", 
+    Logger::getInstance().logMessage(LogLevel::OVERRIDE, 
+              "[POSE],%u,%.2f,%.2f,%.2f,%.1f,%.1f", 
               pros::millis(), pose->x, pose->y, normalizedTheta,
               leftVelocity, rightVelocity);
-  }();
+  }
 }
 } // namespace mvlib
