@@ -34,9 +34,9 @@ struct WaypointParams {
   /// @brief Print the offset of the waypoint every N ms (optional)
   std::optional<uint32_t> logOffsetEveryMs = std::nullopt;
 
-  /// @brief Make waypoint permanent. It will always log when reached, 
+  /// @brief Make waypoint retriggerable. It will always log when reached, 
   ///        never timeout, and never deactivate.
-  bool permanent = false;
+  bool retriggerable = false;
 };
 
 struct WaypointOffset {

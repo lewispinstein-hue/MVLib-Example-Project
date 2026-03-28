@@ -1,5 +1,5 @@
 #include "mvlib/core.hpp"
-#include "mvlib/logMacros.h"
+#include "mvlib/private/forwardLogMacros.h"
 #include "pros/misc.hpp"
 #include <sys/types.h>
 
@@ -9,32 +9,27 @@ struct WatchInfo {
   int16_t currVal{0};
   int16_t prevVal{0};
   int displayValue{0};
-  
 };  
 
 bool Logger::setDefaultWatches(const DefaultWatches& watches) {
   if (!m_configSet || !m_configValid) {
-    LOG_WARN("Default watches could not be set because config is not set or invalid!");
+    _MVLIB_FORWARD_WARN("Default watches could not be set because config is not set or invalid!");
     return false;
   }
 
   constexpr uint TEMP_THRESHOLD = 50;
   if (watches.leftDrivetrainWatchdog) {
-    WatchInfo leftDT{}; 
-    leftDT.currVal = 0;
-    leftDT.prevVal = 0;
     Logger::getInstance().watch("Left Drivetrain OK:", LogLevel::INFO, true,
-      [&]() {
-        uint temp = m_pLeftDrivetrain ? m_pLeftDrivetrain->get_temperature() : 0;
-        leftDT.currVal = temp;
+      [info = WatchInfo{}, this]() mutable {        uint temp = m_pLeftDrivetrain ? m_pLeftDrivetrain->get_temperature() : 0;
+        info.currVal = temp;
 
         // Case 1: not overheating -> overheating
-        if (leftDT.currVal >= TEMP_THRESHOLD && leftDT.prevVal < TEMP_THRESHOLD) leftDT.displayValue = leftDT.currVal;
+        if (info.currVal >= TEMP_THRESHOLD && info.prevVal < TEMP_THRESHOLD) info.displayValue = info.currVal;
         // Case 2: overheating -> not overheating
-        else if (leftDT.currVal <= TEMP_THRESHOLD && leftDT.prevVal > TEMP_THRESHOLD) leftDT.displayValue = leftDT.currVal;
+        else if (info.currVal <= TEMP_THRESHOLD && info.prevVal > TEMP_THRESHOLD) info.displayValue = info.currVal;
 
-        leftDT.prevVal = leftDT.currVal;
-        return leftDT.displayValue;
+        info.prevVal = info.currVal;
+        return info.displayValue;
       }, 
         LevelOverride<int>{
         .elevatedLevel = LogLevel::WARN,
@@ -43,25 +38,22 @@ bool Logger::setDefaultWatches(const DefaultWatches& watches) {
       },
       "%d"
     );
-    LOG_INFO("Created default Left Drivetrain watch.");
+    _MVLIB_FORWARD_INFO("Created default Left Drivetrain watch.");
   }
 
   if (watches.rightDrivetrainWatchdog) {
-    WatchInfo rightDT{};
-    rightDT.currVal = 0;
-    rightDT.prevVal = 0;
     Logger::getInstance().watch("Right Drivetrain OK:", LogLevel::INFO, true,
-      [&]() {
+      [info = WatchInfo{}, this]() mutable {       
         uint temp = m_pRightDrivetrain ? m_pRightDrivetrain->get_temperature() : 0;
-        rightDT.currVal = temp;
+        info.currVal = temp;
 
         // Case 1: not overheating -> overheating
-        if (rightDT.currVal >= TEMP_THRESHOLD && rightDT.prevVal < TEMP_THRESHOLD) rightDT.displayValue = rightDT.currVal;
+        if (info.currVal >= TEMP_THRESHOLD && info.prevVal < TEMP_THRESHOLD) info.displayValue = info.currVal;
         // Case 2: overheating -> not overheating
-        else if (rightDT.currVal <= TEMP_THRESHOLD && rightDT.prevVal > TEMP_THRESHOLD) rightDT.displayValue = rightDT.currVal;
+        else if (info.currVal <= TEMP_THRESHOLD && info.prevVal > TEMP_THRESHOLD) info.displayValue = info.currVal;
 
-        rightDT.prevVal = rightDT.currVal;
-        return rightDT.displayValue;
+        info.prevVal = info.currVal;
+        return info.displayValue;
       }, LevelOverride<int>{
         .elevatedLevel = LogLevel::WARN,
         .predicate = PREDICATE(v > TEMP_THRESHOLD),
@@ -69,57 +61,48 @@ bool Logger::setDefaultWatches(const DefaultWatches& watches) {
       },
       "%d"
     );
-    LOG_INFO("Created default Right Drivetrain watch.");
+    _MVLIB_FORWARD_INFO("Created default Right Drivetrain watch.");
   }
 
   if (watches.batteryWatchdog) {
-    WatchInfo batTemp{};
-    batTemp.currVal = pros::battery::get_temperature();
-    batTemp.prevVal = batTemp.currVal;
     Logger::getInstance().watch("Battery Temp OK:", LogLevel::INFO, true,
-      [&]() -> uint {
-        uint temp = pros::battery::get_temperature();
-        batTemp.currVal = temp;
+      [info = WatchInfo{}, this]() mutable {        uint temp = pros::battery::get_temperature();
+        info.currVal = temp;
 
-        if (batTemp.currVal >= TEMP_THRESHOLD && batTemp.prevVal < TEMP_THRESHOLD) batTemp.displayValue = batTemp.currVal;
-        else if (batTemp.currVal <= TEMP_THRESHOLD && batTemp.prevVal > TEMP_THRESHOLD) batTemp.displayValue = batTemp.currVal;
+        if (info.currVal >= TEMP_THRESHOLD && info.prevVal < TEMP_THRESHOLD) info.displayValue = info.currVal;
+        else if (info.currVal <= TEMP_THRESHOLD && info.prevVal > TEMP_THRESHOLD) info.displayValue = info.currVal;
 
-        batTemp.prevVal = batTemp.currVal;
-        return batTemp.displayValue;
+        info.prevVal = info.currVal;
+        return info.displayValue;
       },
-      LevelOverride<uint>{
+      LevelOverride<int>{
         .elevatedLevel = LogLevel::WARN,
         .predicate = PREDICATE(v > 45),
         .label = "Battery Temp High:"
       }, 
       "%d"
     );
-    LOG_INFO("Created default Battery Temperature Watch");
+    _MVLIB_FORWARD_INFO("Created default Battery Temperature Watch");
 
-    WatchInfo batVolt{};
-    // Init
-    batVolt.currVal = pros::battery::get_voltage();
-    batVolt.prevVal = batVolt.currVal;
     constexpr uint MIN_BATTERY_VOLTAGE = 11200;
     constexpr uint MAX_BATTERY_VOLTAGE = 13000;
 
     Logger::getInstance().watch("Battery Voltage OK:", LogLevel::INFO, true,
-      [&]() -> uint {
-        uint curr = pros::battery::get_voltage();
-        uint prev = batVolt.prevVal;
+      [info = WatchInfo{}, this]() mutable {        uint curr = pros::battery::get_voltage();
+        uint prev = info.prevVal;
 
         bool currBad = (curr < MIN_BATTERY_VOLTAGE || curr > MAX_BATTERY_VOLTAGE);
         bool prevBad = (prev < MIN_BATTERY_VOLTAGE || prev > MAX_BATTERY_VOLTAGE);
 
         // Only trigger on transitions between GOOD <-> BAD
         if (currBad != prevBad) {
-          batVolt.displayValue = curr;
+          info.displayValue = curr;
         }
 
-        batVolt.prevVal = curr;
-        return batVolt.displayValue;
+        info.prevVal = curr;
+        return info.displayValue;
       },
-      LevelOverride<uint>{
+      LevelOverride<int>{
         .elevatedLevel = LogLevel::WARN,
         .predicate = PREDICATE(v < MIN_BATTERY_VOLTAGE || v > MAX_BATTERY_VOLTAGE),
         .label = "Battery Voltage Anomaly:"
@@ -127,7 +110,7 @@ bool Logger::setDefaultWatches(const DefaultWatches& watches) {
       "%d"
     );
 
-    LOG_INFO("Created default Battery Voltage Watch");
+    _MVLIB_FORWARD_INFO("Created default Battery Voltage Watch");
   }
 
   return true;

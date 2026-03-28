@@ -2,21 +2,8 @@
 #include "mvlib/core.hpp"
 #include "mvlib/logMacros.h"
 #include "mvlib/config.hpp"
+#include "mvlib/private/forwardLogMacros.h"
 #include <cmath>
-
-#ifdef MVLIB_LOGS_REDEFINED
-#undef LOG_DEBUG
-#undef LOG_INFO
-#undef LOG_WARN
-#undef LOG_ERROR
-#undef LOG_FATAL
-
-#define LOG_DEBUG MVLIB_LOG_DEBUG
-#define LOG_INFO MVLIB_LOG_INFO
-#define LOG_WARN MVLIB_LOG_WARN
-#define LOG_ERROR MVLIB_LOG_ERROR
-#define LOG_FATAL MVLIB_LOG_FATAL
-#endif
 
 namespace mvlib {
 
@@ -25,62 +12,22 @@ Logger &Logger::getInstance() {
   return instance;
 }
 
-void Logger::setLogToTerminal(bool v) {
-  m_config.logToTerminal.store(v);
-  LOG_DEBUG("logToTerminal set to: %d", v);
-}
-
-void Logger::setLogToSD(bool v) {
-  if (m_started || m_sdLocked) {
-    LOG_WARN("setLogToSD() called after logger start — ignored. Set value: %d", v);
-    return;
-  }
-  m_config.logToSD.store(v);
-  LOG_DEBUG("logToSD set to: %d", v);
-}
-
-void Logger::setPrintWatches(bool v) {
-  m_config.printWatches.store(v);
-  LOG_DEBUG("printWatches set to: %d", v);
-}
-
-void Logger::setPrintTelemetry(bool v) {
-  m_config.printTelemetry.store(v);
-  LOG_DEBUG("printTelemetry set to: %d", v);
-}
-
-void Logger::setPrintWaypoints(bool v) {
-  m_config.printWaypoints.store(v);
-  LOG_DEBUG("printWaypoints set to: %d", v);
-}
-
-void Logger::setLoggerMinLevel(LogLevel level) {
-  LOG_DEBUG("SetLoggerMinLevel set to: %d", (int)level);
-  m_minLogLevel = level;
-}
-
-void Logger::setPoseGetter(std::function<std::optional<Pose>()> getter) {
-  unique_lock m(m_mutex, TIMEOUT_MAX);
-  if (!m.isLocked() || !getter) return;
-  m_getPose = std::move(getter);
-}
-
 bool Logger::setRobot(Drivetrain drivetrain) {
   if (m_configSet) {
-    LOG_WARN("setRobot(Drivetrain) called twice!");
+    _MVLIB_FORWARD_WARN("setRobot(Drivetrain) called twice!");
     return false;
   }
   m_configSet = true;
 
   if (!drivetrain.leftDrivetrain || !drivetrain.rightDrivetrain) {
-    LOG_FATAL("setRobot(Drivetrain) called with nullptr drivetrain arguments!");
+    _MVLIB_FORWARD_FATAL("setRobot(Drivetrain) called with nullptr drivetrain arguments!");
     return false;
   }
 
   m_pLeftDrivetrain = drivetrain.leftDrivetrain;
   m_pRightDrivetrain = drivetrain.rightDrivetrain;
 
-  LOG_INFO("setRobot() successfully set variables!");
+  _MVLIB_FORWARD_DEBUG("setRobot() successfully set variables!");
   return true;
 }
 
@@ -90,11 +37,11 @@ bool Logger::m_checkRobotConfig() {
   bool allValid = true;
 
   if (!m_pLeftDrivetrain) {
-    LOG_FATAL("Left Drivetrain pointer is NULL!");
+    _MVLIB_FORWARD_ERROR("Left Drivetrain pointer is NULL!");
     allValid = false;
   }
   if (!m_pRightDrivetrain) {
-    LOG_FATAL("Right Drivetrain pointer is NULL!");
+    _MVLIB_FORWARD_ERROR("Right Drivetrain pointer is NULL!");
     allValid = false;
   }
 
@@ -111,8 +58,8 @@ void Logger::pause() {
   if (st != pros::E_TASK_STATE_DELETED && st != pros::E_TASK_STATE_INVALID &&
       st != pros::E_TASK_STATE_SUSPENDED) {
     m_task->suspend();
-    LOG_INFO("Logger paused.");
-  } else LOG_INFO("Logger cannot be paused as it is not in a running state.");
+    _MVLIB_FORWARD_DEBUG("Logger paused.");
+  } else _MVLIB_FORWARD_DEBUG("Logger cannot be paused as it is not in a running state.");
 }
 
 void Logger::resume() {
@@ -120,13 +67,13 @@ void Logger::resume() {
   if (st != pros::E_TASK_STATE_DELETED && st != pros::E_TASK_STATE_INVALID &&
       st == pros::E_TASK_STATE_SUSPENDED) {
     m_task->resume();
-    LOG_INFO("Logger resumed.");
-  } else LOG_INFO("Logger cannot be resumed as it is not paused.");
+    _MVLIB_FORWARD_DEBUG("Logger resumed.");
+  } else _MVLIB_FORWARD_DEBUG("Logger cannot be resumed as it is not paused.");
 }
 
 void Logger::start() {
   if (m_started) {
-    LOG_WARN("start() called more than once. Aborted!");
+    _MVLIB_FORWARD_WARN("start() called more than once. Aborted!");
     return;
   }
   m_started = true;
@@ -137,15 +84,15 @@ void Logger::start() {
     if (!success) {
       m_config.logToSD.store(false);
       m_sdLocked = true;
-      LOG_FATAL("initSDCard failed! Unable to initialize SD card.");
-    } else LOG_INFO("Successfully initialized SD card with filename: %s", m_currentFilename);
+      _MVLIB_FORWARD_FATAL("initSDCard failed! Unable to initialize SD card.");
+    } else _MVLIB_FORWARD_DEBUG("Successfully initialized SD card with filename: %s", m_currentFilename);
   }
     
   // Check config
   m_configValid = m_checkRobotConfig();
-  if (!m_configValid) LOG_ERROR("At least one pointer set by setRobot(Drivetrain) is nullptr. "
+  if (!m_configValid) _MVLIB_FORWARD_ERROR("At least one pointer set by setRobot(Drivetrain) is nullptr. "
                                 "Using speed estimation instead.");
-  else LOG_INFO("All pointers set by setRobot(Drivetrain) seem to be valid.");
+  else _MVLIB_FORWARD_DEBUG("All pointers set by setRobot(Drivetrain) seem to be valid.");
 
   // Create task that runs Update
   m_task = std::make_unique<pros::Task>([this]() mutable {
@@ -156,7 +103,7 @@ void Logger::start() {
       // Update loop
       try { this->Update(); }
       catch (std::exception &e) {
-        LOG_FATAL("%s", e.what());
+        _MVLIB_FORWARD_FATAL("%s", e.what());
       }
 
       // Flush stdout buffer, and wait appropriate time

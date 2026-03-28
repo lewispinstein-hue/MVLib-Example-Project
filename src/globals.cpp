@@ -73,28 +73,31 @@ screen::Manager disp;
 mvlib::Logger& logger = mvlib::Logger::getInstance();
 
 mvlib::WaypointHandle PZ = logger.addWaypoint("Parking Zone", {
-  .tarX = 60, 
+  .tarX = 60.5, 
   .tarY = -2,
-  .timeoutMs = 50_mvS,
-  .linearTol = 3.5,
+  // .timeoutMs = 50_mvS,
+  .linearTol = 1.5,
+  .logOffsetEveryMs = 250_mvMs,
 });
 
 mvlib::WaypointHandle ML = logger.addWaypoint("Match Loader", {
-  .tarX = 65.5, 
+  .tarX = 26.5, 
   .tarY = 47,
   .tarT = 90,
-  .timeoutMs = 8_mvS,
+  // .timeoutMs = 8_mvS,
   .linearTol = 1,
   .thetaTol = 10,
+  .logOffsetEveryMs = 250_mvMs,
 });
 
 mvlib::WaypointHandle HG = logger.addWaypoint("High Goal", {
-.tarX = 24, 
-.tarY = 47,
-.tarT = 90,
-.timeoutMs = 15_mvS,
-.linearTol = 1,
-.thetaTol = 5,
+  .tarX = 24, 
+  .tarY = 47,
+  .tarT = 90,
+  // .timeoutMs = 15_mvS,
+  .linearTol = 1,
+  .thetaTol = 5,
+  .logOffsetEveryMs = 250_mvMs,
 });
 
 void handleController() {

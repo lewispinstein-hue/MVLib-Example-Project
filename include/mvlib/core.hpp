@@ -197,12 +197,12 @@ public:
    * @note Most fields are atomic so they can be toggled while running.
    */
   struct LoggerConfig {
-    std::atomic<bool> logToTerminal{true};    ///< @brief Print logs to the terminal.
-    std::atomic<bool> logToSD{true};          ///< @brief Write logs to SD (locked after logger start).
-    std::atomic<bool> printWatches{true};     ///< @brief Print registered watches.
-    std::atomic<bool> printTelemetry{true};   ///< @brief Print periodic telemetry.
-    std::atomic<bool> printWaypoints{true}; ///< @brief Print waypoints upon timeout or reached.
-
+    std::atomic<bool> logToTerminal{true};     ///< @brief Print logs to the terminal.
+    std::atomic<bool> logToSD{true};           ///< @brief Write logs to SD (locked after logger start).
+    std::atomic<bool> printWatches{true};      ///< @brief Print registered watches.
+    std::atomic<bool> printTelemetry{true};    ///< @brief Print periodic telemetry.
+    std::atomic<bool> printWaypoints{true};    ///< @brief Print waypoints upon timeout or reached.
+    std::atomic<bool> logSystemInfo{true}; ///< @brief Print system messages (e.g., warnings, errors)
   };
 
   /**
@@ -284,6 +284,13 @@ public:
   */
   void setPrintWaypoints(bool v);
 
+  /**
+   * @brief Enable/disable printing of system messages. Recommended to 
+   *        be left on for debugging. Disable if you want your MotionView
+   *        GUI to be void of system messages.
+  */
+  void setLogSystemInfo(bool v);
+  
   /**
    * @brief Set the minimum log level that will be emitted.
    *
@@ -673,10 +680,11 @@ private:
   struct InternalWaypoint {
     WPId id{};               /// Internal ID
     std::string name{};      /// Name as inputted by user
-    WaypointParams params; /// Waypoint parameters
+    WaypointParams params;   /// Waypoint parameters
     uint32_t lastPrintMs{};  /// Last time the waypoint was printed (params.printOffsetEveryMs)
     uint32_t startTimeMs;    /// Creation time of the waypoint
     bool active = true;      /// Is the waypoint active (not yet reached or timed out)?
+    bool prevReached = false;
   };
 
   /// @brief Waypoint registry
@@ -684,6 +692,13 @@ private:
 
   /// @brief Get the offset of the robot in WaypointOffset from the WPId
   WaypointOffset getWaypointOffset(WPId id);
+
+  /// @brief Get the prevReached variable 
+  bool isPrevReached(WPId id);
+
+  /// @brief Set the prevReached variable. 
+  /// \return false on invalid Id, true otherwise
+  bool setPrevReached(WPId id, bool value);
 
   /// @brief Get the params of the WPId 
   WaypointParams getWaypointParams(WPId id);

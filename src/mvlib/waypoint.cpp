@@ -95,6 +95,20 @@ std::string Logger::getWaypointName(WPId id) {
   return (it != m_waypoints.end()) ? it->name : "";
 }
 
+bool Logger::isPrevReached(WPId id) {
+  auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
+                          [id](const InternalWaypoint& ic) { return ic.id == id; });
+  return (it != m_waypoints.end()) ? it->prevReached : false;
+}
+
+bool Logger::setPrevReached(WPId id, bool reached) {
+  auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
+                          [id](const InternalWaypoint& ic) { return ic.id == id; });
+  if (it == m_waypoints.end()) return false;
+  it->prevReached = reached;
+  return true;
+}
+
 static std::string formatParams(const WaypointParams& params) {
   char buf[256];
   snprintf(buf, sizeof(buf), "%.2f,%.2f,%s,%s,%.2f,%s,%d",
@@ -103,7 +117,7 @@ static std::string formatParams(const WaypointParams& params) {
            params.timeoutMs.has_value() ? std::to_string(params.timeoutMs.value()).c_str() : "NA",
            params.linearTol,
            params.thetaTol.has_value() ? std::to_string(params.thetaTol.value()).c_str() : "NA",
-           params.permanent ? 1 : 0); 
+           params.retriggerable ? 1 : 0); 
   return std::string(buf);
 }
 

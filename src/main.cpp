@@ -1,5 +1,4 @@
 #include "main.h" 
-#include "globals.hpp"
 
 namespace control {
 
@@ -134,18 +133,24 @@ void initialize() {
     .leftDrivetrain = &leftMg,
     .rightDrivetrain = &rightMg
   });
+  logger.setLogSystemInfo(true);
   logger.setLoggerMinLevel(mvlib::LogLevel::DEBUG);
   logger.setLogToSD(false);
   chassis.calibrate();
   chassis.setPose(0, 0, 0);
   
   logger.start();
-  setupWatches();
+  // setupWatches();
+  logger.setDefaultWatches({
+    .leftDrivetrainWatchdog = true,
+    .rightDrivetrainWatchdog = true,
+    .batteryWatchdog = true
+  });
 }
 
 void screenTask() {
-  pros::screen::erase_rect(0, 5, 270, 65);
-  // Pose
+  pros::screen::erase_rect(0, 5, 480, 65);
+
   lemlib::Pose pose = chassis.getPose();
   pros::screen::print(pros::E_TEXT_SMALL, 0, 5, 
                 "X: %.2f | Y: %.2f | T: %.2f", pose.x, pose.y, pose.theta);
@@ -153,12 +158,15 @@ void screenTask() {
                 "Back: %d | Front: %d", rearDist.get_distance(), frontDist.get_distance());
 
   pros::screen::print(pros::E_TEXT_SMALL, 0, 45, 
-                      "Waypoint Distances (lin, ang): PZ: %.2f, null | ML: %.2f, %.1f | HG: %.2f, %.1f", 
+                      "WP Dist: PZ: %.2f | ML: %.2f, %.1f | HG: %.2f, %.1f", 
                       PZ.getOffset().totalOffset,
                       ML.getOffset().totalOffset, ML.getOffset().offT.value_or(0),
                       HG.getOffset().totalOffset, HG.getOffset().offT.value_or(0));
 
-  
+  // const uint RD = std::clamp((int)rearDist.get_distance(), 10, 470);
+  // const uint FD = std::clamp((int)frontDist.get_distance(), 10, 250);
+  // pros::screen::set_pen(pros::c::COLOR_AQUA);
+  // pros::screen::fill_rect(10, 10, RD, FD);
   pros::delay(50);
 }
 
@@ -168,11 +176,48 @@ control::Slew slew(
   18, 0
 );
 
+void auton() {
+  logger.info("Starting auton"); 
+  uint32_t startTime = pros::millis();
+  chassis.setPose(50, 6, 270); // Blue parking zone start
+
+  /* 
+   * Route: move from start -> grouped 4 balls -> match loader ->
+   * backwards into high goal -> parking zone
+  */
+
+  chassis.moveToPose(23, 12, 0, 1000);
+  // Slower while intake ing
+  chassis.moveToPoint(24, 31, 1100, {.maxSpeed = 80}); 
+  chassis.moveToPose(47, 47, 90, 1300);
+  // Dont eject balls when going into loader
+  chassis.moveToPose(65, 47, 90, 700, {.maxSpeed = 80});
+  pros::delay(1200);
+  chassis.moveToPose(24, 47, 90, 1300, 
+                     {.forwards = false, .maxSpeed = 100});
+  pros::delay(1000); // While scoring
+  chassis.setPose(25, 47, chassis.getPose().theta);
+  chassis.moveToPose(44, 42, 130, 900, 
+                     {.minSpeed = 90}); // Drift to turn
+  chassis.waitUntil(18); // after moving 18in, cancel to drift
+  chassis.moveToPose(60, -2, 180, 1200, 
+                     {.minSpeed = 100}); // Slam into parking zone to clear
+
+
+  logger.info("Auton took %d ms", pros::millis() - startTime);
+}
+
 void opcontrol() {
+  pros::Task telemetry(screenTask);
+  disp.drawBottomButtons(false);
+  if (disp.waitForBottomButtonTap(0) == screen::ButtonId::MIDDLE) {
+    auton();
+  }
+  disp.clearScreen();
+
   constexpr uint8_t deadband = 10;
   static float prevThrottle = 0;
   static float prevTurn = 0;
-  pros::Task telemetry(screenTask);
   while (true) {
 
     handleController();
@@ -200,6 +245,7 @@ void opcontrol() {
     float turn = control::expoTurn(RIGHT_X, 2.8, deadband);
     
     chassis.arcade(throttle, turn, false, control::getDesaturateBias());
-    pros::delay(20);
+
+    pros::delay(10);
   }
 }

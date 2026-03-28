@@ -80,11 +80,13 @@ bool Manager::isInside(int px, int py, int bx, int by, int w, int h) {
 }
 
 ButtonId Manager::waitForBottomButtonTap(uint32_t timeout) {
+  if (timeout == 0) return ButtonId::NONE;
+
   int last_release_count = pros::screen::touch_status().release_count;
   uint32_t startTime = pros::millis();
   int final_x = -1, final_y = -1;
 
-  while ((uint32_t)pros::millis() - startTime < timeout) {
+  while (pros::millis() - startTime < timeout) {
     pros::screen_touch_status_s touch = pros::screen::touch_status();
 
     if (touch.touch_status == pros::E_TOUCH_PRESSED ||
@@ -115,6 +117,7 @@ ButtonId Manager::waitForBottomButtonTap(uint32_t timeout) {
 }
 
 bool Manager::waitForScreenTouch(uint32_t timeoutMs, bool detectTouchOnly) {
+  if (timeoutMs == 0) return false;
   uint32_t start = pros::millis();
   int32_t initialRelease = pros::screen::touch_status().release_count;
 
