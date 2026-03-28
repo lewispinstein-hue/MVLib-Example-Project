@@ -138,7 +138,6 @@ void initialize() {
   logger.setLogToSD(false);
   chassis.calibrate();
   chassis.setPose(0, 0, 0);
-  
   logger.start();
   // setupWatches();
   logger.setDefaultWatches({
@@ -209,11 +208,11 @@ void auton() {
 
 void opcontrol() {
   pros::Task telemetry(screenTask);
-  disp.drawBottomButtons(false);
-  if (disp.waitForBottomButtonTap(0) == screen::ButtonId::MIDDLE) {
-    auton();
-  }
-  disp.clearScreen();
+  // disp.drawBottomButtons(false);
+  // if (disp.waitForBottomButtonTap(0) == screen::ButtonId::MIDDLE) {
+  //   auton();
+  // }
+  // disp.clearScreen();
 
   constexpr uint8_t deadband = 10;
   static float prevThrottle = 0;
