@@ -17,6 +17,7 @@ static int formatOffset(char *buf, size_t len, const WaypointOffset& off) {
            off.offX, off.offY,
            off.offT.has_value() ? std::to_string(off.offT.value()).c_str() : "NA",
            off.remainingTimeout.has_value() ? std::to_string(off.remainingTimeout.value()).c_str() : "NA");
+
   return 0;
 }
 

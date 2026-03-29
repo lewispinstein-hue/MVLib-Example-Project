@@ -64,6 +64,7 @@ WaypointOffset Logger::getWaypointOffset(WPId id) {
 WaypointParams Logger::getWaypointParams(WPId id) {
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
+  if (it == m_waypoints.end()) return {};
   return it->params;
 }
 

@@ -1,7 +1,7 @@
-#include "main.h" 
+#include "main.h"
 
 namespace control {
-
+ 
 double normVel(double rpm) {
   double v = (rpm / 4.7244094488); // Locked at blue gearset
   return std::clamp(v, -127.0, 127.0);
@@ -129,11 +129,11 @@ void initialize() {
   pros::screen::erase();
 
   mvlib::setOdom(&chassis);
-  logger.setRobot({
-    .leftDrivetrain = &leftMg,
-    .rightDrivetrain = &rightMg
-  });
-  logger.setLogSystemInfo(true);
+  // logger.setRobot({
+  //   .leftDrivetrain = &leftMg,
+  //   .rightDrivetrain = &rightMg
+  // });
+  logger.setLogSystemInfo(false);
   logger.setLoggerMinLevel(mvlib::LogLevel::DEBUG);
   logger.setLogToSD(false);
   chassis.calibrate();
@@ -162,10 +162,6 @@ void screenTask() {
                       ML.getOffset().totalOffset, ML.getOffset().offT.value_or(0),
                       HG.getOffset().totalOffset, HG.getOffset().offT.value_or(0));
 
-  // const uint RD = std::clamp((int)rearDist.get_distance(), 10, 470);
-  // const uint FD = std::clamp((int)frontDist.get_distance(), 10, 250);
-  // pros::screen::set_pen(pros::c::COLOR_AQUA);
-  // pros::screen::fill_rect(10, 10, RD, FD);
   pros::delay(50);
 }
 

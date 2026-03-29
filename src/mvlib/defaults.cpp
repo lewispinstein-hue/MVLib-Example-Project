@@ -13,15 +13,19 @@ struct WatchInfo {
 };  
 
 bool Logger::setDefaultWatches(const DefaultWatches& watches) {
+  DefaultWatches w = watches;
+  bool retval = true;
   if (!m_configSet || !m_configValid) {
-    _MVLIB_FORWARD_WARN("Default watches could not be set because config is not set or invalid!");
-    return false;
+    _MVLIB_FORWARD_WARN("Drivetrain watches could not be set because config is not set or invalid!");
+    w.leftDrivetrainWatchdog = false;
+    w.rightDrivetrainWatchdog = false;
+    retval = false;
   }
 
   // Common threshold for drivetrain components
   constexpr int16_t TEMP_THRESHOLD = 50;
 
-  if (watches.leftDrivetrainWatchdog) {
+  if (w.leftDrivetrainWatchdog) {
     // Capture WatchInfo by value and use mutable to persist state within the Logger
     Logger::getInstance().watch("Left Drivetrain OK:", LogLevel::INFO, true,
       [info = WatchInfo{
@@ -46,7 +50,7 @@ bool Logger::setDefaultWatches(const DefaultWatches& watches) {
     _MVLIB_FORWARD_INFO("Created default Left Drivetrain watch.");
   }
 
-  if (watches.rightDrivetrainWatchdog) {
+  if (w.rightDrivetrainWatchdog) {
     Logger::getInstance().watch("Right Drivetrain OK:", LogLevel::INFO, true,
       [info = WatchInfo{
         .prevVal = (int16_t)(m_pRightDrivetrain ? m_pRightDrivetrain->get_temperature() : 0),
@@ -70,7 +74,7 @@ bool Logger::setDefaultWatches(const DefaultWatches& watches) {
     _MVLIB_FORWARD_INFO("Created default Right Drivetrain watch.");
   }
 
-  if (watches.batteryWatchdog) {
+  if (w.batteryWatchdog) {
     constexpr int16_t BAT_TEMP_THRESHOLD = 45;
 
     // Battery Temperature Watch
@@ -97,14 +101,14 @@ bool Logger::setDefaultWatches(const DefaultWatches& watches) {
     _MVLIB_FORWARD_INFO("Created default Battery Temperature Watch");
 
     // Battery Voltage Watch (thresholds in millivolts)
-    constexpr uint MIN_BAT_VOLT = 12050;
+    constexpr uint MIN_BAT_VOLT = 12000;
     constexpr uint MAX_BAT_VOLT = 13250;
 
     Logger::getInstance().watch("Battery Voltage OK:", LogLevel::INFO, true,
       [info = WatchInfo{
         .prevVal = (int16_t)pros::battery::get_voltage(),
         .displayValue = (double)pros::battery::get_voltage()
-      }, MIN_BAT_VOLT, MAX_BAT_VOLT]() mutable {
+      }, MIN_BAT_VOLT, MAX_BAT_VOLT, this]() mutable {
         info.currVal = (int16_t)pros::battery::get_voltage();
         
         // Use initial reading to determine if state has actually changed
@@ -131,6 +135,6 @@ bool Logger::setDefaultWatches(const DefaultWatches& watches) {
     _MVLIB_FORWARD_INFO("Created default Battery Voltage Watch");
   }
 
-  return true;
+  return retval;
 }
 } // namespace mvlib

@@ -31,11 +31,11 @@ pros::Rotation horizontal(-11);
 pros::Rotation vertical(14);
 
 lemlib::TrackingWheel vertical1(&vertical, 
-                                1.95, 
+                                5.95, 
                                 0.25);
 
 lemlib::TrackingWheel horizontal1(&horizontal,
-                                  1.95,
+                                  5.95,
                                   -4.5);
 
 lemlib::OdomSensors sensors(&vertical1,
@@ -73,32 +73,32 @@ screen::Manager disp;
 mvlib::Logger& logger = mvlib::Logger::getInstance();
 
 mvlib::WaypointHandle PZ = logger.addWaypoint("Parking Zone", {
-  .tarX = -10.5, 
-  .tarY = 0,
+  .tarX = 60.5, 
+  .tarY = -2,
   // .timeoutMs = 50_mvS,
-  .linearTol = 1.5,
-  // .logOffsetEveryMs = 250_mvMs,
-  .retriggerable = true,
+  .linearTol = 2,
+  .logOffsetEveryMs = 2_mvS,
+  // .retriggerable = true,
 });
 
 mvlib::WaypointHandle ML = logger.addWaypoint("Match Loader", {
-  .tarX = 26.5, 
+  .tarX = 64.5, 
   .tarY = 47,
-  .tarT = 90,
+  // .tarT = 90,
   // .timeoutMs = 8_mvS,
-  .linearTol = 1,
+  .linearTol = 2,
   .thetaTol = 10,
-  // .logOffsetEveryMs = 250_mvMs,
+  .logOffsetEveryMs = 2_mvS,
 });
 
 mvlib::WaypointHandle HG = logger.addWaypoint("High Goal", {
   .tarX = 24, 
   .tarY = 47,
-  .tarT = 90,
+  // .tarT = 90,
   // .timeoutMs = 15_mvS,
   .linearTol = 1,
   .thetaTol = 5,
-  // .logOffsetEveryMs = 250_mvMs,
+  .logOffsetEveryMs = 2_mvS,
 });
 
 void handleController() {
