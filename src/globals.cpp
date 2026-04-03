@@ -17,8 +17,11 @@ pros::Distance rearDist(1);
 pros::Distance frontDist(8);
 
 float TRACK_WIDTH = 8.9;
-float ROBOT_HEIGHT = 12.40f;
+float TRACK_LENGTH = 12.375f;
 
+// 12.375 length
+// 8.9 width
+// 8 wheelbase
 lemlib::Drivetrain drivetrain(&leftMg,
                               &rightMg,
                               TRACK_WIDTH,
@@ -31,12 +34,12 @@ pros::Rotation horizontal(-11);
 pros::Rotation vertical(14);
 
 lemlib::TrackingWheel vertical1(&vertical, 
-                                5.95, 
-                                0.25);
+                                1.95, 
+                                -1.0);
 
 lemlib::TrackingWheel horizontal1(&horizontal,
-                                  5.95,
-                                  -4.5);
+                                  1.95,
+                                  -3.4);
 
 lemlib::OdomSensors sensors(&vertical1,
                             nullptr,
@@ -72,34 +75,36 @@ lemlib::Chassis chassis(drivetrain,
 screen::Manager disp;
 mvlib::Logger& logger = mvlib::Logger::getInstance();
 
-mvlib::WaypointHandle PZ = logger.addWaypoint("Parking Zone", {
-  .tarX = 60.5, 
-  .tarY = -2,
-  // .timeoutMs = 50_mvS,
-  .linearTol = 2,
-  .logOffsetEveryMs = 2_mvS,
-  // .retriggerable = true,
-});
+// mvlib::WaypointHandle PZ = logger.addWaypoint("Parking Zone", {
+//   .tarX = 60.5, 
+//   .tarY = -2,
+//   // .timeoutMs = 50_mvS,
+//   .linearTol = 2,
+//   .logOffsetEveryMs = 2_mvS,
+//   // .retriggerable = true,
+// });
 
-mvlib::WaypointHandle ML = logger.addWaypoint("Match Loader", {
-  .tarX = 64.5, 
-  .tarY = 47,
-  // .tarT = 90,
-  // .timeoutMs = 8_mvS,
-  .linearTol = 2,
-  .thetaTol = 10,
-  .logOffsetEveryMs = 2_mvS,
-});
+// mvlib::WaypointHandle ML = logger.addWaypoint("Match Loader", {
+//   .tarX = 64.5, 
+//   .tarY = 47,
+//   // .tarT = 90,
+//   // .timeoutMs = 8_mvS,
+//   .linearTol = 2,
+//   .thetaTol = 10,
+//   .logOffsetEveryMs = 2_mvS,
+// });
 
-mvlib::WaypointHandle HG = logger.addWaypoint("High Goal", {
-  .tarX = 24, 
-  .tarY = 47,
-  // .tarT = 90,
-  // .timeoutMs = 15_mvS,
-  .linearTol = 1,
-  .thetaTol = 5,
-  .logOffsetEveryMs = 2_mvS,
-});
+// mvlib::WaypointHandle HG = logger.addWaypoint("High Goal", {
+//   .tarX = 24, 
+//   .tarY = 47,
+//   // .tarT = 90,
+//   // .timeoutMs = 15_mvS,
+//   .linearTol = 1,
+//   .thetaTol = 5,
+//   .logOffsetEveryMs = 2_mvS,
+// });
+
+
 
 void handleController() {
   typedef enum class ControllerButton {
@@ -143,7 +148,7 @@ void handleController() {
   ControllerButton event = ControllerButton::BTN_NONE;
 
   // Find the first button that fired this cycle
-  for (const auto &b : bindings) {
+  for (const auto& b : bindings) {
     bool triggered = b.onPress
                      ? controller.get_digital_new_press(b.button)
                      : controller.get_digital_new_release(b.button);
@@ -167,18 +172,24 @@ void handleController() {
   break;
 
   case ControllerButton::BTN_L2:
-  {
-    static int count = 0;
-    disp.printToScreen(false, 50, 50, "Count: {}", count++);
-    break;
-  }
+  exportGraphWatches.store(!exportGraphWatches.load());
+  break;
 
   case ControllerButton::BTN_B:
   logger.pause();
   break;
 
   case ControllerButton::BTN_A:
-  logger.resume();
+  {
+    const float currTheta = chassis.getPose().theta;
+    switch (getFieldQuadrant()) {
+      case FieldQuadrant::BlueLeft:  chassis.setPose(25.5, -47, currTheta); break;
+      case FieldQuadrant::BlueRight: chassis.setPose(25.5, 47, currTheta); break;
+      case FieldQuadrant::RedLeft:   chassis.setPose(-25.5, 47, currTheta); break;
+      case FieldQuadrant::RedRight:  chassis.setPose(-25.5, -47, currTheta); break;
+      default: break;
+    }
+  }
   break;
 
   case ControllerButton::BTN_Y:
@@ -206,7 +217,7 @@ void handleController() {
 
 void setupWatches() {
   logger.setDefaultWatches({/* Defaults */});
-  logger.watch("Left Drive Temp", mvlib::LogLevel::INFO, 10_mvS,
+  logger.watch("Left Drive Temp", mvlib::LogLevel::INFO, 5_mvS,
   []() { return avg<double, float>(leftMg.get_temperature_all()); },
   mvlib::LevelOverride<float>{
     .elevatedLevel = mvlib::LogLevel::WARN,
@@ -214,7 +225,7 @@ void setupWatches() {
     .label = "High Left Drive Temp"
   }, "%.1f");
 
-  logger.watch("Right Drive Temp", mvlib::LogLevel::INFO, 10_mvS,
+  logger.watch("Right Drive Temp", mvlib::LogLevel::INFO, 5_mvS,
   []() { return avg<double, float>(rightMg.get_temperature_all()); },
   mvlib::LevelOverride<float>{
     .elevatedLevel = mvlib::LogLevel::WARN,
@@ -229,4 +240,51 @@ void setupWatches() {
     .predicate = PREDICATE(v < 30),
     .label = "Low Battery"
   }, "%.0f");
+}
+
+constexpr std::pair<double, double> highGoalMappings[] = {
+  // X, Y
+  {25, 47},   // Blue Right
+  {25, -47},  // Blue Left
+  {-25, -47}, // Red Right
+  {-25, 47}   // Red Left
+};
+
+FieldQuadrant getFieldQuadrant(double linTol, double angTol) {
+  lemlib::Pose pose = chassis.getPose();
+
+  // Iterate through the 4 defined quadrants
+  for (int i = 0; i < 4; ++i) {
+    double targetX = highGoalMappings[i].first;
+    double targetY = highGoalMappings[i].second;
+
+    double targetTheta = 0.0;
+    bool restrictOnTheta = true;
+
+    // Set the target theta based on the quadrant
+    switch (static_cast<FieldQuadrant>(i)) {
+      case FieldQuadrant::BlueLeft:
+      case FieldQuadrant::BlueRight:
+        targetTheta = 90.0; 
+        break;
+
+      case FieldQuadrant::RedLeft:
+      case FieldQuadrant::RedRight:
+        targetTheta = 270.0;
+        break;
+
+      default: break;
+    }
+
+    double distance = std::hypot(pose.x - targetX, pose.y - targetY);    
+    // Calculate shortest angular difference (handles 360-degree wrap)
+    double angleDiff = std::abs(std::remainder(pose.theta - targetTheta, 360.0));
+
+    // Check if within tolerances
+    if (distance < linTol && (!restrictOnTheta || angleDiff < angTol)) {
+      return static_cast<FieldQuadrant>(i);
+    }
+  }
+  // Return Unknown if the robot is not within the tolerance of any quadrant
+  return FieldQuadrant::Unknown;
 }

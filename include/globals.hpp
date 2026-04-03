@@ -6,7 +6,7 @@
 // IWYU pragma: begin_keep
 #include "api.h"
 #include "lemlib/api.hpp"
-#include "mvlib/Optional/lemlib.hpp"
+// #include "mvlib/Optional/lemlib.hpp"
 #include "mvlib/core.hpp"
 #include "screen.hpp"
 // IWYU pragma: end_keep
@@ -35,6 +35,8 @@ extern mvlib::Logger& logger;
 
 extern pros::Distance rearDist;
 extern pros::Distance frontDist;
+
+extern std::atomic<bool> exportGraphWatches;
 
 void handleController();
 void setupWatches();
@@ -65,3 +67,13 @@ rtn avg(const std::vector<T>& v) {
   }
   return num /= iter;
 }
+
+enum class FieldQuadrant {
+  BlueRight,
+  BlueLeft,
+  RedRight,
+  RedLeft,
+  Unknown
+};
+
+FieldQuadrant getFieldQuadrant(double linTol = 8.0, double angTol = 15.0);

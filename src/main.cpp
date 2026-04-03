@@ -1,9 +1,13 @@
 #include "main.h"
+#include "globals.hpp"
+#include "pros/screen.h"
+#include <cstdint>
 
 namespace control {
  
 double normVel(double rpm) {
   double v = (rpm / 4.7244094488); // Locked at blue gearset
+  // If your using a different gearset, change this to (maxRPM / 127)
   return std::clamp(v, -127.0, 127.0);
 }
 
@@ -84,7 +88,7 @@ double expoTurn(const double& input, const double& expoTurn,
                    const double& deadband) {  
   if (fabs(input) < deadband) return 0;
   
-  constexpr uint16_t TURN_JOYSTICK_CUTTOFF = 129; // Out of 127
+  constexpr uint16_t TURN_JOYSTICK_CUTTOFF = 126; // Out of 127
   bool CONTROL_OVERRIDE = false;
   if (abs(controller.get_analog(ANALOG_RIGHT_X)) > TURN_JOYSTICK_CUTTOFF) {
     CONTROL_OVERRIDE = true;
@@ -110,41 +114,87 @@ double expoTurn(const double& input, const double& expoTurn,
   if (fabs(blended) >= 1) return 127 * ((norm >= 0) ? 1 : -1);
   return blended * retExpo;
 }
-
-float getDesaturateBias() {
-  constexpr uint8_t CUTTOFF = 100;
-  constexpr double OVERRIDE_BIAS = 0.65; // When driving faster than CUTTOFF
-  constexpr double DEFAULT_BIAS = 0.48; // When not driving faster than CUTTOFF
-
-  // If driving slow, we want high desat bias. If driving fast, we want lower bias
-  float speed = normVel((avg<double, float>(leftMg.get_actual_velocity_all()) + 
-                 avg<double, float>(rightMg.get_actual_velocity_all())) / 2);
-  return (speed >= CUTTOFF) ? OVERRIDE_BIAS : DEFAULT_BIAS;
-}
 } // namespace control
 
+std::atomic<bool> exportGraphWatches{false};
+void recursive() {
+  recursive();
+}
 void initialize() {
   rightMg.set_brake_mode_all(pros::MotorBrake::brake);
   leftMg.set_brake_mode_all(pros::MotorBrake::brake);
   pros::screen::erase();
 
-  mvlib::setOdom(&chassis);
-  // logger.setRobot({
-  //   .leftDrivetrain = &leftMg,
-  //   .rightDrivetrain = &rightMg
-  // });
-  logger.setLogSystemInfo(false);
+  mvlib::setOdom([]() -> std::optional<mvlib::Pose> {
+    lemlib::Pose pose = chassis.getPose();
+    if (!std::isfinite(pose.x) || 
+        !std::isfinite(pose.y) ||
+        !std::isfinite(pose.theta)) {
+        return std::nullopt;
+      }
+
+    return mvlib::Pose{pose.x, pose.y, pose.theta};
+  });
+
+  pros::MotorGroup *test = new pros::MotorGroup({});
+
+  logger.setRobot({
+    .leftDrivetrain = test,
+    .rightDrivetrain = &rightMg
+  });
+  logger.setLogSystemInfo(true);
   logger.setLoggerMinLevel(mvlib::LogLevel::DEBUG);
   logger.setLogToSD(false);
   chassis.calibrate();
+  // chassis.setPose(45, 5.5, 270);
   chassis.setPose(0, 0, 0);
-  logger.start();
-  // setupWatches();
-  logger.setDefaultWatches({
-    .leftDrivetrainWatchdog = true,
-    .rightDrivetrainWatchdog = true,
-    .batteryWatchdog = true
+  setupWatches();
+  logger.watch("Rear Distance", mvlib::LogLevel::OFF, true,
+  []() { return std::clamp((int)rearDist.get_distance(), 0, 2500); },
+  mvlib::LevelOverride<int>{
+    .elevatedLevel = mvlib::LogLevel::INFO,
+    .predicate = PREDICATE(exportGraphWatches.load())
+  }, "%d");
+  
+    logger.addWaypoint("Blue Left High Goal", {
+    .tarX = 24, 
+    .tarY = -47,
+    .tarT = 90,
+    .linearTol = 2.5,
+    .thetaTol = 10,
+    .retriggerable = true
   });
+
+  logger.start();
+  pros::delay(5000);
+  logger.addWaypoint("Blue Right High Goal", {
+    .tarX = 24, 
+    .tarY = 47,
+    .tarT = 90,
+    .linearTol = 2.5,
+    .thetaTol = 10,
+    .retriggerable = true
+  });
+
+  logger.addWaypoint("Red Right High Goal", {
+    .tarX = -24, 
+    .tarY = 47,
+    .tarT = 270,
+    .linearTol = 2.5,
+    .thetaTol = 10,
+    .retriggerable = true
+  });
+
+  logger.addWaypoint("Red Left High Goal", {
+    .tarX = -24, 
+    .tarY = -47,
+    .tarT = 270,
+    .linearTol = 2.5,
+    .thetaTol = 10,
+    .retriggerable = true
+  });
+  logger.start();
+  recursive();
 }
 
 void screenTask() {
@@ -156,11 +206,11 @@ void screenTask() {
   pros::screen::print(pros::E_TEXT_SMALL, 0, 25, 
                 "Back: %d | Front: %d", rearDist.get_distance(), frontDist.get_distance());
 
-  pros::screen::print(pros::E_TEXT_SMALL, 0, 45, 
-                      "WP Dist: PZ: %.2f | ML: %.2f, %.1f | HG: %.2f, %.1f", 
-                      PZ.getOffset().totalOffset,
-                      ML.getOffset().totalOffset, ML.getOffset().offT.value_or(0),
-                      HG.getOffset().totalOffset, HG.getOffset().offT.value_or(0));
+  // pros::screen::print(pros::E_TEXT_SMALL, 0, 45, 
+  //                     "WP Dist: PZ: %.2f | ML: %.2f, %.1f | HG: %.2f, %.1f", 
+  //                     PZ.getOffset().totalOffset,
+  //                     ML.getOffset().totalOffset, ML.getOffset().offT.value_or(0),
+  //                     HG.getOffset().totalOffset, HG.getOffset().offT.value_or(0));
 
   pros::delay(50);
 }
@@ -239,7 +289,7 @@ void opcontrol() {
     float throttle = control::expoThrottle(LEFT_Y, 1.9, deadband);
     float turn = control::expoTurn(RIGHT_X, 2.8, deadband);
     
-    chassis.arcade(throttle, turn, false, control::getDesaturateBias());
+    chassis.arcade(throttle, turn, false, 0.48);
 
     pros::delay(10);
   }
