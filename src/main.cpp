@@ -1,7 +1,5 @@
 #include "main.h"
-#include "globals.hpp"
-#include "pros/screen.h"
-#include <cstdint>
+#include <unistd.h>
 
 namespace control {
  
@@ -102,7 +100,7 @@ double expoTurn(const double& input, const double& expoTurn,
 
   constexpr uint8_t MAX_SPEED_OVERRIDE = 126;
   constexpr uint8_t OVERRIDE_SPEED = 127;
-  constexpr uint8_t DEFAULT_SPEED = 95;
+  constexpr uint8_t DEFAULT_SPEED = 90;
 
   uint8_t retExpo = (speed > MAX_SPEED_OVERRIDE || CONTROL_OVERRIDE) 
                      ? OVERRIDE_SPEED : DEFAULT_SPEED;
@@ -117,47 +115,46 @@ double expoTurn(const double& input, const double& expoTurn,
 } // namespace control
 
 std::atomic<bool> exportGraphWatches{false};
-void recursive() {
-  recursive();
-}
+
+float rawRightX, rawLeftY;
+float LEFT_Y, RIGHT_X;
+float prevTurn, prevThrottle;
+
 void initialize() {
   rightMg.set_brake_mode_all(pros::MotorBrake::brake);
   leftMg.set_brake_mode_all(pros::MotorBrake::brake);
   pros::screen::erase();
 
-  mvlib::setOdom([]() -> std::optional<mvlib::Pose> {
-    lemlib::Pose pose = chassis.getPose();
-    if (!std::isfinite(pose.x) || 
-        !std::isfinite(pose.y) ||
-        !std::isfinite(pose.theta)) {
-        return std::nullopt;
-      }
-
-    return mvlib::Pose{pose.x, pose.y, pose.theta};
-  });
-
-  pros::MotorGroup *test = new pros::MotorGroup({});
-
-  logger.setRobot({
-    .leftDrivetrain = test,
-    .rightDrivetrain = &rightMg
-  });
+  // setupWatches();
   logger.setLogSystemInfo(true);
   logger.setLoggerMinLevel(mvlib::LogLevel::DEBUG);
   logger.setLogToSD(false);
+  logger.setTimings({
+    .terminal_polling_rate = 10
+  });
+
+  mvlib::Pose pose{};
+  mvlib::setOdom([&]() -> std::optional<mvlib::Pose> {
+    pose.x += 0.1;
+    pose.y += 0.1;
+    pose.theta += 0.1;
+    return pose;
+  });
+  logger.setRobot({
+    .leftDrivetrain = &leftMg,
+    .rightDrivetrain = &rightMg
+  });
+
   chassis.calibrate();
-  // chassis.setPose(45, 5.5, 270);
-  chassis.setPose(0, 0, 0);
-  setupWatches();
-  logger.watch("Rear Distance", mvlib::LogLevel::OFF, true,
-  []() { return std::clamp((int)rearDist.get_distance(), 0, 2500); },
-  mvlib::LevelOverride<int>{
-    .elevatedLevel = mvlib::LogLevel::INFO,
-    .predicate = PREDICATE(exportGraphWatches.load())
-  }, "%d");
-  
+  chassis.setPose(-45, 5.5, 90);
+  // chassis.setPose(0, 0, 0);
+
+  // logger.watch("Throttle Wanted", mvlib::LogLevel::INFO, 150_mvMs, 
+  //   []() { return prevThrottle; }, 
+  //   mvlib::LevelOverride<float>{}, "%.2f");
+
     logger.addWaypoint("Blue Left High Goal", {
-    .tarX = 24, 
+    .tarX = 24,
     .tarY = -47,
     .tarT = 90,
     .linearTol = 2.5,
@@ -165,8 +162,6 @@ void initialize() {
     .retriggerable = true
   });
 
-  logger.start();
-  pros::delay(5000);
   logger.addWaypoint("Blue Right High Goal", {
     .tarX = 24, 
     .tarY = 47,
@@ -184,7 +179,6 @@ void initialize() {
     .thetaTol = 10,
     .retriggerable = true
   });
-
   logger.addWaypoint("Red Left High Goal", {
     .tarX = -24, 
     .tarY = -47,
@@ -194,7 +188,6 @@ void initialize() {
     .retriggerable = true
   });
   logger.start();
-  recursive();
 }
 
 void screenTask() {
@@ -212,7 +205,7 @@ void screenTask() {
   //                     ML.getOffset().totalOffset, ML.getOffset().offT.value_or(0),
   //                     HG.getOffset().totalOffset, HG.getOffset().offT.value_or(0));
 
-  pros::delay(50);
+  pros::delay(65);
 }
 
 // Value of 0 disables slew on that axis
@@ -253,6 +246,17 @@ void auton() {
 }
 
 void opcontrol() {
+
+  float turn = control::expoTurn(RIGHT_X, 2, 10);
+
+  logger.watch("Turn Raw", mvlib::LogLevel::INFO, 150_mvMs, []() {
+    return controller.get_analog(ANALOG_RIGHT_X);
+  }, mvlib::LevelOverride<int32_t>{}, "%d");
+
+  logger.watch("Turn Post-processing", mvlib::LogLevel::INFO, 150_mvMs, 
+    [&]() { return turn; },
+    mvlib::LevelOverride<float>{}, "%.2f");
+
   pros::Task telemetry(screenTask);
   // disp.drawBottomButtons(false);
   // if (disp.waitForBottomButtonTap(0) == screen::ButtonId::MIDDLE) {
@@ -264,13 +268,11 @@ void opcontrol() {
   static float prevThrottle = 0;
   static float prevTurn = 0;
   while (true) {
-
     handleController();
-    screenTask();
-    const float rawLeftY = controller.get_analog(ANALOG_LEFT_Y);
-    const float rawRightX = controller.get_analog(ANALOG_RIGHT_X);
+     rawLeftY = controller.get_analog(ANALOG_LEFT_Y);
+     rawRightX = controller.get_analog(ANALOG_RIGHT_X);
 
-    float LEFT_Y = control::slewLimit(
+     LEFT_Y = control::slewLimit(
         rawLeftY,
         prevThrottle,
         control::MotionType::FORWARD,
@@ -278,7 +280,7 @@ void opcontrol() {
     );
     prevThrottle = LEFT_Y;
 
-    float RIGHT_X = control::slewLimit(
+     RIGHT_X = control::slewLimit(
         rawRightX,
         prevTurn,
         control::MotionType::TURN,
@@ -287,10 +289,10 @@ void opcontrol() {
     prevTurn = RIGHT_X;
 
     float throttle = control::expoThrottle(LEFT_Y, 1.9, deadband);
-    float turn = control::expoTurn(RIGHT_X, 2.8, deadband);
-    
-    chassis.arcade(throttle, turn, false, 0.48);
+     turn = control::expoTurn(RIGHT_X, 2, deadband);
 
-    pros::delay(10);
+    chassis.arcade(throttle, turn, false, 0.55);
+    logger.info("TESTING");
+    pros::delay(15);
   }
 }

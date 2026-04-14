@@ -326,7 +326,7 @@ class Serial : public Device {
 
 namespace literals {
 /**
- * Constructs a Serial device from a litteral ending in _ser
+ * Constructs a Serial device from a literal ending in _ser
  *
  * \return a pros::Serial for the corresponding port
  *

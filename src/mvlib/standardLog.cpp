@@ -1,14 +1,11 @@
 #include "mvlib/core.hpp"
+#include "mvlib/telemetry.hpp"
 #include <cstdarg>
 
 namespace mvlib {
-// Format: [LOG],uptime,lvl,message
-void Logger::debug(const char *fmt, ...) {
-  if ((uint8_t)LogLevel::DEBUG < (uint8_t)m_minLogLevel
-      || !(uint8_t)m_minLogLevel) return;
 
-  unique_lock m(m_stdLogMutex);
-  if (!m.isLocked()) return;
+void Logger::debug(const char *fmt, ...) {
+  if (!Telemetry::getInstance().shouldLog(LogLevel::DEBUG)) return;
 
   char buffer[512];
   va_list args;
@@ -16,21 +13,11 @@ void Logger::debug(const char *fmt, ...) {
   vsnprintf(buffer, sizeof(buffer), fmt, args);
   va_end(args);
 
-  const uint32_t time = pros::millis();
-  if (m_config.logToTerminal.load()) 
-    printf("[LOG],%d,DEBUG,%s\n", time, buffer);
-
-  if (m_config.logToSD.load() && !m_sdLocked && m_sdFile) {
-    logToSD("", "[LOG],%d,DEBUG,%s", time, buffer);
-  }
+  logMessage(LogLevel::DEBUG, "%s", buffer);
 }
 
 void Logger::info(const char *fmt, ...) {
-  if ((uint8_t)LogLevel::INFO < (uint8_t)m_minLogLevel
-      || !(uint8_t)m_minLogLevel) return;
-
-  unique_lock m(m_stdLogMutex);
-  if (!m.isLocked()) return;
+  if (!Telemetry::getInstance().shouldLog(LogLevel::INFO)) return;
 
   char buffer[512];
   va_list args;
@@ -38,21 +25,11 @@ void Logger::info(const char *fmt, ...) {
   vsnprintf(buffer, sizeof(buffer), fmt, args);
   va_end(args);
 
-  const uint32_t time = pros::millis();
-  if (m_config.logToTerminal.load()) 
-    printf("[LOG],%d,INFO,%s\n", time, buffer);
-
-  if (m_config.logToSD.load() && !m_sdLocked && m_sdFile) {
-    logToSD("", "[LOG],%d,INFO,%s", time, buffer);
-  }
+  logMessage(LogLevel::INFO, "%s", buffer);
 }
 
 void Logger::warn(const char *fmt, ...) {
-  if ((uint8_t)LogLevel::WARN < (uint8_t)m_minLogLevel
-      || !(uint8_t)m_minLogLevel) return;
-
-  unique_lock m(m_stdLogMutex);
-  if (!m.isLocked()) return;
+  if (!Telemetry::getInstance().shouldLog(LogLevel::WARN)) return;
 
   char buffer[512];
   va_list args;
@@ -60,21 +37,11 @@ void Logger::warn(const char *fmt, ...) {
   vsnprintf(buffer, sizeof(buffer), fmt, args);
   va_end(args);
 
-  const uint32_t time = pros::millis();
-  if (m_config.logToTerminal.load()) 
-    printf("[LOG],%d,WARN,%s\n", time, buffer);
-
-  if (m_config.logToSD.load() && !m_sdLocked && m_sdFile) {
-    logToSD("", "[LOG],%d,WARN,%s", time, buffer);
-  }
+  logMessage(LogLevel::WARN, "%s", buffer);
 }
 
 void Logger::error(const char *fmt, ...) {
-  if ((uint8_t)LogLevel::ERROR < (uint8_t)m_minLogLevel
-      || !(uint8_t)m_minLogLevel) return;
-
-  unique_lock m(m_stdLogMutex);
-  if (!m.isLocked()) return;
+  if (!Telemetry::getInstance().shouldLog(LogLevel::ERROR)) return;
 
   char buffer[512];
   va_list args;
@@ -82,21 +49,11 @@ void Logger::error(const char *fmt, ...) {
   vsnprintf(buffer, sizeof(buffer), fmt, args);
   va_end(args);
 
-  const uint32_t time = pros::millis();
-  if (m_config.logToTerminal.load()) 
-    printf("[LOG],%d,ERROR,%s\n", time, buffer);
-
-  if (m_config.logToSD.load() && !m_sdLocked && m_sdFile) {
-    logToSD("", "[LOG],%d,ERROR,%s", time, buffer);
-  }
-} 
+  logMessage(LogLevel::ERROR, "%s", buffer);
+}
 
 void Logger::fatal(const char *fmt, ...) {
-  if ((uint8_t)LogLevel::FATAL < (uint8_t)m_minLogLevel
-      || !(uint8_t)m_minLogLevel) return;
-      
-  unique_lock m(m_stdLogMutex);
-  if (!m.isLocked()) return;
+  if (!Telemetry::getInstance().shouldLog(LogLevel::FATAL)) return;
 
   char buffer[512];
   va_list args;
@@ -104,12 +61,6 @@ void Logger::fatal(const char *fmt, ...) {
   vsnprintf(buffer, sizeof(buffer), fmt, args);
   va_end(args);
 
-  const uint32_t time = pros::millis();
-  if (m_config.logToTerminal.load()) 
-    printf("[LOG],%d,FATAL,%s\n", time, buffer);
-
-  if (m_config.logToSD.load() && !m_sdLocked && m_sdFile) {
-    logToSD("", "[LOG],%d,FATAL,%s", time, buffer);
-  }
-} 
+  logMessage(LogLevel::FATAL, "%s", buffer);
+}
 } // namespace mvlib

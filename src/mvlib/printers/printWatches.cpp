@@ -1,51 +1,76 @@
 #include "mvlib/core.hpp"
-#include "mvlib/logMacros.h"
-
-#ifdef MVLIB_LOGS_REDEFINED
-#undef LOG_DEBUG
-#undef LOG_INFO
-#undef LOG_WARN
-#undef LOG_ERROR
-#undef LOG_FATAL
-
-#define LOG_DEBUG MVLIB_LOG_DEBUG
-#define LOG_INFO MVLIB_LOG_INFO
-#define LOG_WARN MVLIB_LOG_WARN
-#define LOG_ERROR MVLIB_LOG_ERROR
-#define LOG_FATAL MVLIB_LOG_FATAL
-#endif
+#include "mvlib/telemetry.hpp"
+#include <inttypes.h>
+#include <string>
 
 namespace mvlib {
+
 void Logger::printWatches() {
+  unique_lock lock(m_mutex);
+  if (!lock.isLocked()) return;
+
   uint32_t nowMs = pros::millis();
-  for (auto &[id, w] : m_watches) {
-    // Gate evaluation frequency for not onChange watches
-    if (!w.onChange && w.lastPrintMs != 0 &&
-       (nowMs - w.lastPrintMs) < w.intervalMs) continue;
+
+  // --- 1. Watch Roster Beacon ---
+  // Periodically sync watch IDs to labels so the frontend can resolve them
+  static uint32_t lastWatchRosterMs = 0;
+  if (nowMs - lastWatchRosterMs > 5000) {
+    for (auto& w : m_watches) {
+      Telemetry::getInstance().sendRoster(w.id, w.label);
+    }
+    lastWatchRosterMs = nowMs;
+  }
+
+  for (auto& w : m_watches) {
+    // Frequency gating
+    if (!w.onChange && w.lastPrintMs != 0 && (nowMs - w.lastPrintMs) < w.intervalMs) {
+      continue;
+    }
 
     if (!w.eval) continue;
 
     auto [lvl, valueStr, label] = w.eval();
-    if (lvl == LogLevel::NONE || lvl == LogLevel::OFF) continue;
-    
+
+    // Change detection
     if (w.onChange) {
       if (w.lastValue && *w.lastValue == valueStr) continue;
       w.lastValue = valueStr;
-    } else if (!w.onChange) w.lastPrintMs = nowMs;
-    
-    // Add watch tag and add comma separators
-    label = std::string("[WATCH],") +
-            std::to_string(nowMs) + 
-            "," + m_levelToString(lvl) 
-            + "," + std::to_string(id)
-            +  "," + label + "," + valueStr;
+    } else {
+      w.lastPrintMs = nowMs;
+    }
 
-    switch (lvl) {
-      case LogLevel::DEBUG: LOG_DEBUG("%s", label.c_str()); break;
-      case LogLevel::INFO:  LOG_INFO("%s",  label.c_str()); break;
-      case LogLevel::WARN:  LOG_WARN("%s",  label.c_str()); break;
-      case LogLevel::ERROR: LOG_ERROR("%s", label.c_str()); break;
-      default:              LOG_INFO("%s",  label.c_str()); break;
+    // --- 2. Terminal Dispatch (Binary Hex) ---
+    if (m_config.logToTerminal.load()) {
+      bool sentAsBinary = false;
+      
+      // Optimization: If the string looks like a number, send it as a raw float packet
+      if (!valueStr.empty() && (isdigit(valueStr[0]) || valueStr[0] == '-')) {
+        try {
+          float numericVal = std::stof(valueStr);
+          WatchPacket pkt;
+          pkt.timestamp = nowMs;
+          pkt.id = w.id;
+          pkt.level = static_cast<uint8_t>(lvl);
+          pkt.value = numericVal;
+          
+          Telemetry::getInstance().sendWatch(pkt);
+          sentAsBinary = true;
+        } catch (...) {
+          sentAsBinary = false;
+        }
+      }
+
+      // Fallback: If not numeric (e.g. "true"), send as framed binary text
+      if (!sentAsBinary) {
+        Telemetry::getInstance().sendText(lvl, "[WATCH],%u,%" PRIu64 ",%s", 
+                                          nowMs, w.id, valueStr.c_str());
+      }
+    }
+
+    // --- 3. SD Dispatch (Human Readable) ---
+    if (m_config.logToSD.load() && !m_sdLocked && m_sdFile) {
+      logToSD(lvl, "[WATCH],%d,%s,%" PRIu64 ",%s,%s", 
+              nowMs, m_levelToString(lvl), w.id, label.c_str(), valueStr.c_str());
     }
   }
 }

@@ -1,7 +1,9 @@
 #include "mvlib/core.hpp"
 #include "mvlib/private/forwardLogMacros.h"
+#include "mvlib/telemetry.hpp"
 
 namespace mvlib {
+
 void Logger::setLogToTerminal(bool v) {
   m_config.logToTerminal.store(v);
   _MVLIB_FORWARD_DEBUG("logToTerminal set to: %d", v);
@@ -36,9 +38,15 @@ void Logger::setLogSystemInfo(bool v) {
   _MVLIB_FORWARD_DEBUG("logSystemInfo set to: %d", v);
 }
 
+void Logger::setTimings(LoggerTimings timings) {
+  _MVLIB_FORWARD_DEBUG("SetTimings changed");
+  m_timings = timings;
+}
+
 void Logger::setLoggerMinLevel(LogLevel level) {
   _MVLIB_FORWARD_DEBUG("SetLoggerMinLevel set to: %d", (int)level);
-  m_minLogLevel = level;
+  // Telemetry engine is now the source of truth for the min log level
+  Telemetry::getInstance().setMinLevel(level);
 }
 
 void Logger::setPoseGetter(std::function<std::optional<Pose>()> getter) {

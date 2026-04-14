@@ -8,7 +8,7 @@
 extern "C" {
 
 typedef struct __attribute__((__packed__)) _asset {
-        uint8_t* buf;
+        uint8_t *buf;
         size_t size;
 } asset;
 }

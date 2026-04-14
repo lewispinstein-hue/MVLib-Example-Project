@@ -1,19 +1,16 @@
 #include "mvlib/core.hpp"
 #include "mvlib/waypoint.hpp"
-#include "mvlib/logMacros.h"
-#include "math.h"
+#include <cmath>
 #include <cstdio> 
 #include <inttypes.h>
 #include <string>
 #include <algorithm>
 
-#ifdef MVLIB_LOGS_REDEFINED
-#undef LOG_INFO
-#define LOG_INFO MVLIB_LOG_INFO
-#endif
-
 namespace mvlib {
 WaypointOffset Logger::getWaypointOffset(WPId id) {
+  unique_lock lock(m_mutex);
+  if (!lock.isLocked()) return {};
+  
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                          [id](const InternalWaypoint& ic) { return ic.id == id; });
   
@@ -62,6 +59,9 @@ WaypointOffset Logger::getWaypointOffset(WPId id) {
 }
 
 WaypointParams Logger::getWaypointParams(WPId id) {
+  unique_lock lock(m_mutex);
+  if (!lock.isLocked()) return {};
+  
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
   if (it == m_waypoints.end()) return {};
@@ -69,6 +69,9 @@ WaypointParams Logger::getWaypointParams(WPId id) {
 }
 
 bool Logger::isWaypointReached(WPId id) {
+  unique_lock lock(m_mutex);
+  if (!lock.isLocked()) return false;
+  
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                          [id](const InternalWaypoint& wp) { return wp.id == id; });
   
@@ -79,18 +82,27 @@ bool Logger::isWaypointReached(WPId id) {
 }
 
 std::string Logger::getWaypointName(WPId id) {
+  unique_lock lock(m_mutex);
+  if (!lock.isLocked()) return {};
+  
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
   return (it != m_waypoints.end()) ? it->name : "";
 }
 
 bool Logger::isPrevReached(WPId id) {
+  unique_lock lock(m_mutex);
+  if (!lock.isLocked()) return false;
+  
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
   return (it != m_waypoints.end()) ? it->prevReached : false;
 }
 
 bool Logger::setPrevReached(WPId id, bool reached) {
+  unique_lock lock(m_mutex);
+  if (!lock.isLocked()) return false;
+  
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
   if (it == m_waypoints.end()) return false;
@@ -112,6 +124,7 @@ static std::string formatParams(const WaypointParams& params) {
 
 WaypointHandle Logger::addWaypoint(std::string name, WaypointParams details) {
   unique_lock lock(m_mutex);
+  if (!lock.isLocked()) return WaypointHandle(0);
 
   WPId id = m_nextId++;
   InternalWaypoint wp;
@@ -131,13 +144,16 @@ WaypointHandle Logger::addWaypoint(std::string name, WaypointParams details) {
   // Use the ID before moving wp into the vector
   m_waypoints.push_back(std::move(wp));
 
-  LOG_INFO("[WPOINT],%d,CREATED,%" PRIu64 ",%s,%s",
+  logMessage(LogLevel::INFO, "[WPOINT],%d,CREATED,%" PRIu64 ",%s,%s",
            pros::millis(), id, m_waypoints.back().name.c_str(), 
            formatParams(details).c_str());
   return WaypointHandle(id);
 }
 
 bool Logger::isWaypointActive(WPId id) {
+  unique_lock lock(m_mutex);
+  if (!lock.isLocked()) return false;
+
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
   return (it != m_waypoints.end()) && it->active;
