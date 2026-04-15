@@ -10,12 +10,11 @@ void Logger::printWaypoints() {
 
   uint32_t nowMs = pros::millis();
 
-  // --- 1. Roster Beacon (Late-Joiner Support) ---
-  if (m_timings.roster_sync_all_interval != 0 &&
-      nowMs - m_lastRosterFlush >= m_timings.roster_sync_all_interval) {
+  if (m_timings.rosterSyncAllInterval != 0 &&
+      nowMs - m_lastRosterFlush >= m_timings.rosterSyncAllInterval) {
     for (auto& wp : m_waypoints) {
       if (!wp.active) continue;
-      Telemetry::getInstance().sendRoster(wp.id);
+      Telemetry::getInstance().sendRoster(wp.id, wp.name);
     }
     m_lastRosterFlush = nowMs;
   }
@@ -55,8 +54,6 @@ void Logger::printWaypoints() {
       }
     }
     
-    // Match the older waypoint transition rules: first reach edge, then clear
-    // prevReached when leaving tolerance, then timeout if still active.
     uint8_t subType = 0;
     bool shouldTrigger = false;
     const char* statusStr = nullptr;

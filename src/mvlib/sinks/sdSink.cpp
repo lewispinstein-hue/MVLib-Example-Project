@@ -112,7 +112,7 @@ void Logger::logToSD(const LogLevel& level, const char *fmt, ...) {
 
   bool isError = (level == LogLevel::ERROR || level == LogLevel::FATAL);
 
-  if (isError || (now - m_lastFileFlush >= m_timings.sd_buffer_flush_interval)) {
+  if (isError || (now - m_lastFileFlush >= m_timings.sdBufferFlushInterval)) {
     fflush(m_sdFile);
     m_lastFileFlush = now;
   }

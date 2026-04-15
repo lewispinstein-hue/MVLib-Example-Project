@@ -14,10 +14,10 @@ void Logger::printWatches() {
   uint32_t nowMs = pros::millis();
 
   // Periodically sync watch IDs to labels so the frontend can resolve them
-  if (m_timings.roster_sync_all_interval != 0 &&
-      nowMs - m_lastRosterFlush >= m_timings.roster_sync_all_interval) {
+  if (m_timings.rosterSyncAllInterval != 0 &&
+      nowMs - m_lastRosterFlush >= m_timings.rosterSyncAllInterval) {
     for (auto& w : m_watches) {
-      Telemetry::getInstance().sendRoster(w.id, false);
+      Telemetry::getInstance().sendRoster(w.id, w.label, false);
     }
     m_lastRosterFlush = nowMs;
   }

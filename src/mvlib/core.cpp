@@ -54,6 +54,9 @@ bool Logger::m_checkRobotConfig() {
 Logger::Logger() {
   m_watches.reserve(24);
   m_waypoints.reserve(16);
+
+  // Begin IO Handle for user logs by constructing singleton
+  (void) Telemetry::getInstance(); 
 }
 
 uint32_t Logger::status() const {
@@ -136,17 +139,17 @@ void Logger::start() {
       }
 
       if (m_config.logToTerminal.load()) {
-        if (m_timings.stdout_buffer_flush_interval != 0 &&
-            now - m_lastTerminalFlush >= m_timings.stdout_buffer_flush_interval) {
+        if (m_timings.stdoutBufferFlushInterval != 0 &&
+            now - m_lastTerminalFlush >= m_timings.stdoutBufferFlushInterval) {
           fflush(stdout);
           m_lastTerminalFlush = now;
         }
-        pros::Task::delay_until(&now, m_timings.terminal_polling_rate);
+        pros::Task::delay_until(&now, m_timings.terminalPollingRate);
       } else {
-        pros::Task::delay_until(&now, m_timings.sd_polling_rate);
+        pros::Task::delay_until(&now, m_timings.sdPollingRate);
       }
     }
-  }, TASK_PRIORITY_DEFAULT, TASK_STACK_DEPTH_DEFAULT, "mvlib Logger");
+  }, TASK_PRIORITY_DEFAULT, TASK_STACK_DEPTH_DEFAULT, "MVLib Logger");
 }
 
 void Logger::Update() {

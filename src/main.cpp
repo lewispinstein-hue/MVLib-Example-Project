@@ -131,14 +131,18 @@ void initialize() {
   logger.setLogSystemInfo(true);
   logger.setLoggerMinLevel(mvlib::LogLevel::DEBUG);
   logger.setLogToSD(false);
-  
+
   logger.setTimings({
-    .sd_buffer_flush_interval = 500,
-    .terminal_polling_rate = 80,
-    .roster_sync_all_interval = 15000
+    .sdBufferFlushInterval = 500,
+    .terminalPollingRate = 80,
+    .rosterSyncAllInterval = 15000
   });
 
-  mvlib::Pose pose{};
+  static mvlib::Pose pose{
+    .x = 23,
+    .y = 46,   
+    .theta = 89
+  };
   mvlib::setOdom([&]() -> std::optional<mvlib::Pose> {
     pose.x += 0.1;
     pose.y += 0.1;
@@ -166,7 +170,7 @@ void initialize() {
     logger.addWaypoint("Blue Left High Goal", {
     .tarX = 24,
     .tarY = -47,
-    .tarT = 90,
+    // .tarT = 90,
     .linearTol = 2.5,
     .thetaTol = 10,
     .retriggerable = true
@@ -176,6 +180,7 @@ void initialize() {
     .tarX = 24, 
     .tarY = 47,
     .tarT = 90,
+    .timeoutMs = 2.5_mvS,
     .linearTol = 2.5,
     .thetaTol = 10,
     .retriggerable = true

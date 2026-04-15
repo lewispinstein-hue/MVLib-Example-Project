@@ -93,13 +93,18 @@ public:
   void sendWaypointStatus(WPId id, uint8_t subType); // 2=Reached, 3=TimedOut
   void sendWatch(WatchId id, LogLevel lvl, float val, bool tripped);
   void sendWatchText(WatchId id, LogLevel lvl, const std::string& text, bool tripped);
-  void sendRoster(uint16_t id, bool isElevated = false);
+  void sendRoster(uint16_t id, const std::string& name, bool isElevated = false);
   void sendText(LogLevel level, const char* fmt, ...);
+  void notifyTransmitTask();
 
 private:
-  Telemetry() : m_minLevel(LogLevel::INFO) {}
+  Telemetry(LogLevel minLevel = LogLevel::INFO);
+  Telemetry(const Telemetry&) = delete;
+  Telemetry& operator=(const Telemetry&) = delete;
+
   LogLevel m_minLevel;
-  pros::Mutex m_terminalMutex;
+  std::unique_ptr<pros::Task> m_transmitHandleTask = nullptr;
+  void writeFrameDirect(const uint8_t* data, size_t len);
   void transmit(uint8_t header, const uint8_t* data, size_t len); // Use raw header
 };
 } // namespace mvlib

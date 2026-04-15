@@ -164,9 +164,9 @@ std::function<bool(const T&)> asPredicate(Pred &&p) {
  * @struct Pose struct used internally that represents the robot's x, y, and theta values.
 */
 struct Pose {
-  double x{0};
-  double y{0};
-  double theta{0};
+  double x{};
+  double y{};
+  double theta{};
 };
 
 inline double normalizeDegrees360(double degrees) {
@@ -325,7 +325,7 @@ public:
      *       It uses the standard fflush(file) function for flushing.
      *
     */
-    uint32_t sd_buffer_flush_interval = 1000;
+    uint32_t sdBufferFlushInterval = 1000;
     
     /**
      * @brief Terminal output flush interval. At 1s (default), 
@@ -340,7 +340,7 @@ public:
      *          be flushed more frequently, while higher values
      *          force flush the buffer less frequently.
     */
-    uint32_t stdout_buffer_flush_interval = 400;
+    uint32_t stdoutBufferFlushInterval = 400;
 
     /**
      * @brief Controls how often mvlib polls for new data and logs it. Default: 120ms
@@ -353,7 +353,7 @@ public:
      *          connection to be completely dropped and cease logging 
      *          or transmission lag.
     */
-    uint32_t sd_polling_rate = 80;
+    uint32_t sdPollingRate = 80;
 
     /**
      * @brief Controls how often mvlib polls for new data and logs it. Default: 80ms
@@ -362,14 +362,14 @@ public:
      *       controls how often that buffer is written too. Faster polling
      *       rates may lead to resource starvation of other tasks.
     */
-    uint32_t terminal_polling_rate = 120;
+    uint32_t terminalPollingRate = 120;
 
     /**
      * @brief Minimum interval between watch and waypoint roster sync beacons.
      *
      * @note Lower values improve late-join recovery at the cost of bandwidth.
     */
-    uint32_t roster_sync_all_interval = 8000;
+    uint32_t rosterSyncAllInterval = 8000;
   };
 
   /**

@@ -1,6 +1,7 @@
 #include "mvlib/core.hpp"
 #include "mvlib/telemetry.hpp"
 #include "mvlib/waypoint.hpp"
+#include <limits>
 #include <cmath>
 #include <cstdio> 
 #include <inttypes.h>
@@ -143,9 +144,28 @@ WaypointHandle Logger::addWaypoint(std::string name, WaypointParams details) {
   // Use the ID before moving wp into the vector
   m_waypoints.push_back(std::move(wp));
 
-  logMessage(LogLevel::INFO, "[WPOINT],%d,CREATED,%d,%s,%s",
-           pros::millis(), id, m_waypoints.back().name.c_str(), 
-           formatParams(details).c_str());
+  if (m_config.logToTerminal.load()) {
+    Telemetry::getInstance().sendRoster(id, m_waypoints.back().name);
+
+    WaypointCreatedPacket pkt;
+    pkt.timestamp = static_cast<uint16_t>(pros::millis());
+    pkt.id = id;
+    pkt.tarX = static_cast<float>(details.tarX);
+    pkt.tarY = static_cast<float>(details.tarY);
+    pkt.tarT = packTelemetryTheta(details.tarT.value_or(0.0));
+    pkt.linTol = details.linearTol;
+    pkt.thetaTol = details.thetaTol.has_value()
+      ? details.thetaTol.value()
+      : std::numeric_limits<float>::quiet_NaN();
+    pkt.timeout = details.timeoutMs.value_or(0);
+    Telemetry::getInstance().sendWaypointCreated(pkt);
+  }
+
+  if (m_config.logToSD.load() && !m_sdLocked && m_sdFile) {
+    logToSD(LogLevel::INFO, "[WPOINT],%d,CREATED,%d,%s,%s",
+            pros::millis(), id, m_waypoints.back().name.c_str(), 
+            formatParams(details).c_str());
+  }
   return WaypointHandle(id);
 }
 
@@ -191,7 +211,7 @@ bool Logger::resyncWaypointsRoster(WPId id) {
                          [id](const InternalWaypoint& ic) { return ic.id == id; });
   if (it == m_waypoints.end() || !it->active) return false;
 
-  Telemetry::getInstance().sendRoster(it->id);
+  Telemetry::getInstance().sendRoster(it->id, it->name);
   m_lastRosterFlush = pros::millis();
   return true;
 }
@@ -202,7 +222,7 @@ void Logger::resyncAllWaypointsRoster() {
 
   for (const auto& wp : m_waypoints) {
     if (!wp.active) continue;
-    Telemetry::getInstance().sendRoster(wp.id);
+    Telemetry::getInstance().sendRoster(wp.id, wp.name);
   }
   m_lastRosterFlush = pros::millis();
 }
@@ -212,9 +232,9 @@ void Logger::resyncAllWatchesRoster() {
   if (!lock.isLocked()) return;
 
   for (const auto& watch : m_watches) {
-    Telemetry::getInstance().sendRoster(watch.id, false);
+    Telemetry::getInstance().sendRoster(watch.id, watch.label, false);
     if (!watch.elevatedLabel.empty()) {
-      Telemetry::getInstance().sendRoster(watch.id, true);
+      Telemetry::getInstance().sendRoster(watch.id, watch.elevatedLabel, true);
     }
   }
   m_lastRosterFlush = pros::millis();

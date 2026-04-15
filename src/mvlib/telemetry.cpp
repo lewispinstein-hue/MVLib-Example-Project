@@ -1,4 +1,5 @@
 #include "mvlib/telemetry.hpp"
+#include "core.hpp"
 #include "pros/rtos.hpp"
 #include <algorithm>
 #include <array>
@@ -14,6 +15,76 @@ constexpr std::size_t kTelemetryMaxPayloadBytes =
 constexpr std::size_t kTelemetryMaxRawFrameBytes = kTelemetryMaxPayloadBytes + 1;
 constexpr std::size_t kTelemetryMaxEncodedFrameBytes =
   kTelemetryMaxRawFrameBytes + (kTelemetryMaxRawFrameBytes / 254) + 2;
+
+constexpr std::size_t kTelemetryQueueCapacity = 64;
+constexpr uint32_t kTelemetryQueueLockTimeoutMs = 2;
+constexpr uint32_t kTelemetryWriteRetryDelayMs = 15;
+constexpr std::size_t kTelemetryMaxWriteRetries = 8;
+
+struct TelemetryFrame {
+  std::array<uint8_t, kTelemetryMaxEncodedFrameBytes> bytes{};
+  std::size_t len{0};
+};
+
+std::array<TelemetryFrame, kTelemetryQueueCapacity> telemetryQueue{};
+std::size_t telemetryQueueHead = 0;
+std::size_t telemetryQueueTail = 0;
+std::size_t telemetryQueueCount = 0;
+pros::Mutex telemetryQueueMutex;
+pros::Mutex telemetryWriteMutex;
+
+bool enqueueTelemetryFrame(const uint8_t* data, std::size_t len) {
+  if (!telemetryQueueMutex.take(kTelemetryQueueLockTimeoutMs)) return false;
+
+  const bool hasCapacity = telemetryQueueCount < kTelemetryQueueCapacity;
+  if (hasCapacity) {
+    auto& slot = telemetryQueue[telemetryQueueTail];
+    std::memcpy(slot.bytes.data(), data, len);
+    slot.len = len;
+    telemetryQueueTail = (telemetryQueueTail + 1) % kTelemetryQueueCapacity;
+    ++telemetryQueueCount;
+  }
+
+  telemetryQueueMutex.give();
+
+  // If we successfully added a frame, wake up the background tasks
+  if (hasCapacity) {
+    mvlib::Telemetry::getInstance().notifyTransmitTask();
+  }
+
+  return hasCapacity;
+}
+
+bool dequeueTelemetryFrame(TelemetryFrame& frame) {
+  if (!telemetryQueueMutex.take()) return false;
+
+  const bool hasFrame = telemetryQueueCount > 0;
+  if (hasFrame) {
+    frame = telemetryQueue[telemetryQueueHead];
+    telemetryQueueHead = (telemetryQueueHead + 1) % kTelemetryQueueCapacity;
+    --telemetryQueueCount;
+  }
+
+  telemetryQueueMutex.give();
+  return hasFrame;
+}
+
+void writeFrameBlocking(const uint8_t* data, std::size_t len) {
+  telemetryWriteMutex.take();
+  std::size_t totalWritten = 0;
+  std::size_t retryCount = 0;
+  while (totalWritten < len) {
+    int result = write(1, data + totalWritten, len - totalWritten);
+    if (result <= 0) {
+      if (++retryCount >= kTelemetryMaxWriteRetries) break;
+      pros::delay(kTelemetryWriteRetryDelayMs);
+      continue;
+    }
+    retryCount = 0;
+    totalWritten += static_cast<std::size_t>(result);
+  }
+  telemetryWriteMutex.give();
+}
 } // namespace
 
 Telemetry& Telemetry::getInstance() {
@@ -90,14 +161,11 @@ void Telemetry::sendWatchText(WatchId id, LogLevel lvl, const std::string& text,
   transmit(encodeMsgAll(lvl, MsgType::WATCH, tripped ? 3 : 2), payload.data(), totalPayloadSize);
 }
 
-void Telemetry::sendRoster(uint16_t id, bool isElevated) {
-  auto name = Logger::getInstance().m_getRosterNameUnlocked(id, isElevated);
-  if (!name.has_value()) return;
-
+void Telemetry::sendRoster(uint16_t id, const std::string& name, bool isElevated) {
   RosterPacket pkt;
   pkt.id = id;
   std::memset(pkt.name, 0, sizeof(pkt.name));
-  std::strncpy(pkt.name, name->c_str(), sizeof(pkt.name) - 1);
+  std::strncpy(pkt.name, name.c_str(), sizeof(pkt.name) - 1);
   
   // SubType 1 indicates this is the secondary/elevated label for the ID
   transmit(encodeMsgAll(LogLevel::OVERRIDE, MsgType::ROSTER, isElevated ? 1 : 0), 
@@ -124,48 +192,77 @@ void Telemetry::sendText(LogLevel level, const char* fmt, ...) {
   header.timestamp = static_cast<uint16_t>(pros::millis());
 
   const std::size_t totalPayloadSize = sizeof(LogPacketHeader) + static_cast<std::size_t>(textLen);
-  std::array<uint8_t, kTelemetryMaxPayloadBytes> payload{};
+  std::array<uint8_t, kTelemetryMaxPayloadBytes> payload;
 
   std::memcpy(payload.data(), &header, sizeof(LogPacketHeader));
   std::memcpy(payload.data() + sizeof(LogPacketHeader), textBuf.data(), static_cast<std::size_t>(textLen));
 
   transmit(encodeMsgAll(level, MsgType::LOG), payload.data(), totalPayloadSize);
 }
+// The background consumer task
+void telemetryIoTask(void* ignore) {
+  (void)ignore;
+  TelemetryFrame frame;
+  while (true) {
+    // Wait for a frame without wasting CPU
+    pros::Task::notify_take(true, TIMEOUT_MAX);
 
-// --- Internal Engine: COBS Encoder & UART Writer ---
+    // Drain the queue completely before going back to sleep
+    while (dequeueTelemetryFrame(frame)) {
+      writeFrameBlocking(frame.bytes.data(), frame.len);
+    }  
+  }
+}
+
+Telemetry::Telemetry(LogLevel minLevel) : m_minLevel(minLevel) {
+  m_transmitHandleTask = std::make_unique<pros::Task>(
+    telemetryIoTask,
+    nullptr,
+    TASK_PRIORITY_DEFAULT + 1,
+    TASK_STACK_DEPTH_DEFAULT,
+    "MVLib TelemetryIO Handler"
+  );
+}
+
+void Telemetry::notifyTransmitTask() {
+  if (m_transmitHandleTask) {
+    m_transmitHandleTask->notify();
+  }
+}
+
+void Telemetry::writeFrameDirect(const uint8_t* data, size_t len) {
+  writeFrameBlocking(data, len);
+}
 
 /**
  * Consistent Overhead Byte Stuffing (COBS)
  * Prevents 0x00 bytes in the data stream by using them as frame delimiters.
  */
-void Telemetry::transmit(uint8_t header, const uint8_t* data, size_t len) {
-  if (data == nullptr || len > kTelemetryMaxPayloadBytes) return;
+void Telemetry::transmit(uint8_t header, const uint8_t *data, size_t len) {
+  if (data == nullptr || len > kTelemetryMaxPayloadBytes)
+    return;
 
-  // Buffer for [Packed Header Byte + Payload Data]
-  const std::size_t rawLen = len + 1;
-  std::array<uint8_t, kTelemetryMaxRawFrameBytes> rawBuf{};
-  rawBuf[0] = header;
-  std::memcpy(rawBuf.data() + 1, data, len);
+  // Uninitialized buffer for speed
+  std::array<uint8_t, kTelemetryMaxEncodedFrameBytes> encodedBuf;
 
-  /**
-   * COBS encoding overhead: 
-   * - 1 byte for every 254 bytes of data
-   * - 1 byte for the final 0x00 delimiter
-   * - 1 byte for the initial code
-   */
-  std::array<uint8_t, kTelemetryMaxEncodedFrameBytes> encodedBuf{};
-  
+  // Virtual zero-copy accessor
+  auto getRawByte = [&](size_t index) -> uint8_t {
+    return (index == 0) ? header : data[index - 1];
+  };
+
+  const size_t rawLen = len + 1;
   size_t writePos = 1;
   size_t codePos = 0;
   uint8_t code = 1;
 
   for (size_t i = 0; i < rawLen; ++i) {
-    if (rawBuf[i] == 0) {
+    uint8_t currentByte = getRawByte(i);
+    if (currentByte == 0) {
       encodedBuf[codePos] = code;
       codePos = writePos++;
       code = 1;
     } else {
-      encodedBuf[writePos++] = rawBuf[i];
+      encodedBuf[writePos++] = currentByte;
       code++;
       if (code == 0xFF) {
         encodedBuf[codePos] = code;
@@ -177,15 +274,7 @@ void Telemetry::transmit(uint8_t header, const uint8_t* data, size_t len) {
   encodedBuf[codePos] = code;
   encodedBuf[writePos++] = 0x00; // Final Delimiter
 
-  // Lock the mutex for the duration of the physical write to prevent packet collision
-  m_terminalMutex.take();
-  std::size_t totalWritten = 0;
-  while (totalWritten < writePos) {
-    const auto result = write(1, encodedBuf.data() + totalWritten, writePos - totalWritten);
-    if (result <= 0) break;
-    totalWritten += static_cast<std::size_t>(result);
-  }
-  m_terminalMutex.give();
+  // If the queue is full, drop the packet rather than stalling the control loop.
+  enqueueTelemetryFrame(encodedBuf.data(), writePos);
 }
-
 } // namespace mvlib
