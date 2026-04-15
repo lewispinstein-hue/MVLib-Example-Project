@@ -1,0 +1,146 @@
+ [POSE],13302,25.80,25.80,25.80,-0.0,0.0
+| [POSE],13382,26.00,26.00,26.00,-0.0,0.0
+| Exception in thread serial-rx-term:
+| Traceback (most recent call last):
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/venv/lib/python3.14/site-packages/serial/serialposix.py", line 575, in read
+| buf = os.read(self.fd, size - len(read))
+| OSError: [Errno 6] Device not configured
+| During handling of the above exception, another exception occurred:
+| Traceback (most recent call last):
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/ports/direct_port.py", line 45, in read
+| self.buffer.extend(self.serial.read(n_bytes - len(self.buffer)))
+| ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/venv/lib/python3.14/site-packages/serial/serialposix.py", line 581, in read
+| raise SerialException('read failed: {}'.format(e))
+| serial.serialutil.SerialException: read failed: [Errno 6] Device not configured
+| During handling of the above exception, another exception occurred:
+| Traceback (most recent call last):
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/common/utils.py", line 50, in retries_wrapper
+| return func(*args, **kwargs)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/v5_device.py", line 878, in user_fifo_read
+| self._serial_cache += self._txrx_ext_packet(0x27, tx_payload, 0, check_length=False)[1:]
+| ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/v5_device.py", line 1025, in _txrx_ext_packet
+| rx = self._txrx_packet(0x56, tx_data=tx_payload, timeout=timeout)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/vex_device.py", line 115, in _txrx_packet
+| rx = self._rx_packet(timeout=timeout)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/vex_device.py", line 63, in _rx_packet
+| b = self.port.read(1)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/ports/direct_port.py", line 54, in read
+| raise PortConnectionException(e)
+| pros.serial.ports.base_port.PortConnectionException: read failed: [Errno 6] Device not configured
+| During handling of the above exception, another exception occurred:
+| Traceback (most recent call last):
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/common/utils.py", line 50, in retries_wrapper
+| return func(*args, **kwargs)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/v5_device.py", line 878, in user_fifo_read
+| self._serial_cache += self._txrx_ext_packet(0x27, tx_payload, 0, check_length=False)[1:]
+| ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/v5_device.py", line 1025, in _txrx_ext_packet
+| rx = self._txrx_packet(0x56, tx_data=tx_payload, timeout=timeout)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/vex_device.py", line 114, in _txrx_packet
+| tx = self._tx_packet(command, tx_data)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/vex_device.py", line 98, in _tx_packet
+| self.port.read_all()
+| ~~~~~~~~~~~~~~~~~~^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/ports/base_port.py", line 12, in read_all
+| return self.read()
+| ~~~~~~~~~^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/ports/direct_port.py", line 39, in read
+| self.buffer.extend(self.serial.read_all())
+| ~~~~~~~~~~~~~~~~~~~~^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/venv/lib/python3.14/site-packages/serial/serialutil.py", line 652, in read_all
+| return self.read(self.in_waiting)
+| ^^^^^^^^^^^^^^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/venv/lib/python3.14/site-packages/serial/serialposix.py", line 549, in in_waiting
+| s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
+| OSError: [Errno 6] Device not configured
+| During handling of the above exception, another exception occurred:
+| Traceback (most recent call last):
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/common/utils.py", line 50, in retries_wrapper
+| return func(*args, **kwargs)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/v5_device.py", line 878, in user_fifo_read
+| self._serial_cache += self._txrx_ext_packet(0x27, tx_payload, 0, check_length=False)[1:]
+| ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/v5_device.py", line 1025, in _txrx_ext_packet
+| rx = self._txrx_packet(0x56, tx_data=tx_payload, timeout=timeout)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/vex_device.py", line 114, in _txrx_packet
+| tx = self._tx_packet(command, tx_data)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/vex_device.py", line 98, in _tx_packet
+| self.port.read_all()
+| ~~~~~~~~~~~~~~~~~~^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/ports/base_port.py", line 12, in read_all
+| return self.read()
+| ~~~~~~~~~^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/ports/direct_port.py", line 39, in read
+| self.buffer.extend(self.serial.read_all())
+| ~~~~~~~~~~~~~~~~~~~~^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/venv/lib/python3.14/site-packages/serial/serialutil.py", line 652, in read_all
+| return self.read(self.in_waiting)
+| ^^^^^^^^^^^^^^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/venv/lib/python3.14/site-packages/serial/serialposix.py", line 549, in in_waiting
+| s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
+| OSError: [Errno 6] Device not configured
+| During handling of the above exception, another exception occurred:
+| Traceback (most recent call last):
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/terminal/terminal.py", line 222, in reader
+| data = self.device.read()
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/v5_user_device.py", line 39, in read
+| self.buffer.extend(self.port.read(1))
+| ~~~~~~~~~~~~~~^^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/ports/v5_wireless_port.py", line 29, in read
+| self.buffer.extend(self.device.user_fifo_read())
+| ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/common/utils.py", line 56, in retries_wrapper
+| return retries_wrapper(*args, n_retries=n_retries - 1, **kwargs)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/common/utils.py", line 56, in retries_wrapper
+| return retries_wrapper(*args, n_retries=n_retries - 1, **kwargs)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/common/utils.py", line 56, in retries_wrapper
+| return retries_wrapper(*args, n_retries=n_retries - 1, **kwargs)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/common/utils.py", line 57, in retries_wrapper
+| raise e
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/common/utils.py", line 50, in retries_wrapper
+| return func(*args, **kwargs)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/v5_device.py", line 878, in user_fifo_read
+| self._serial_cache += self._txrx_ext_packet(0x27, tx_payload, 0, check_length=False)[1:]
+| ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/v5_device.py", line 1025, in _txrx_ext_packet
+| rx = self._txrx_packet(0x56, tx_data=tx_payload, timeout=timeout)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/vex_device.py", line 114, in _txrx_packet
+| tx = self._tx_packet(command, tx_data)
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/devices/vex/vex_device.py", line 98, in _tx_packet
+| self.port.read_all()
+| ~~~~~~~~~~~~~~~~~~^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/ports/base_port.py", line 12, in read_all
+| return self.read()
+| ~~~~~~~~~^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/ports/direct_port.py", line 39, in read
+| self.buffer.extend(self.serial.read_all())
+| ~~~~~~~~~~~~~~~~~~~~^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/venv/lib/python3.14/site-packages/serial/serialutil.py", line 652, in read_all
+| return self.read(self.in_waiting)
+| ^^^^^^^^^^^^^^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/venv/lib/python3.14/site-packages/serial/serialposix.py", line 549, in in_waiting
+| s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
+| OSError: [Errno 6] Device not configured
+| During handling of the above exception, another exception occurred:
+| Traceback (most recent call last):
+| File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1082, in _bootstrap_inner
+| self._context.run(self.run)
+| ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/venv/lib/python3.14/site-packages/sentry_sdk/integrations/threading.py", line 140, in run
+| return _run_old_run_func()
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/venv/lib/python3.14/site-packages/sentry_sdk/integrations/threading.py", line 135, in _run_old_run_func
+| reraise(*_capture_exception())
+| ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/venv/lib/python3.14/site-packages/sentry_sdk/utils.py", line 1843, in reraise
+| raise value
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/venv/lib/python3.14/site-packages/sentry_sdk/integrations/threading.py", line 133, in _run_old_run_func
+| return old_run_func(self, *a[1:], **kw)
+| File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1024, in run
+| self._target(*self._args, **self._kwargs)
+| ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+| File "/Users/David/Documents/Tauri Live Viewer/MotionView/src/pros-cli/pros/serial/terminal/terminal.py", line 247, in reader
+| time.sleep(0.01)
+| ^^^^
+| NameError: name 'time' is not defined. Did you forget to import 'time'?

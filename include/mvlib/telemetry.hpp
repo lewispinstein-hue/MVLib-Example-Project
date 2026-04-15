@@ -1,11 +1,12 @@
 #pragma once
-
 #include "core.hpp"
-#include "pros/rtos.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
 namespace mvlib {
+
+inline constexpr std::size_t kTelemetryMaxTextBytes = 511;
 
 /**
  * @enum MsgType
@@ -19,98 +20,86 @@ enum class MsgType : uint8_t {
     LOG    = 0x05  // Standard text-based logs
 };
 
-// --- Binary Packet Structures (Strictly Packed) ---
+/**
+ * @brief [TTT LLL SS] -> Type (3b), Level (3b), SubType (2b)
+ */
+static constexpr uint8_t encodeMsgAll(LogLevel lvl, MsgType type, uint8_t subType = 0) {
+  uint8_t t = (static_cast<uint8_t>(type) & 0x07) << 5;
+  uint8_t rawLvl = static_cast<uint8_t>(lvl);
+  uint8_t l = ((rawLvl == 0xFF ? 0x07 : rawLvl) & 0x07) << 2;
+  return t | l | (subType & 0x03);
+}
 
+// Optimized Packets
 struct __attribute__((packed)) PosePacket {
-    uint32_t timestamp;
-    float x;
-    float y;
-    float theta;
-    float leftVel;
-    float rightVel;
+  uint16_t timestamp;
+  float x; 
+  float y;
+  uint16_t theta;
+  int8_t leftVel; 
+  int8_t rightVel;
 };
 
-struct __attribute__((packed)) WaypointPacket {
-    uint32_t timestamp;
-    uint64_t id;
-    uint8_t  state; // 0=OFFSET, 1=REACHED, 2=TIMEDOUT
-    float    offX;
-    float    offY;
-    float    offT;
-    float    totalOff;
-    int32_t  remainingTimeout; // -1 if NA
+struct __attribute__((packed)) WaypointCreatedPacket {
+  uint16_t timestamp;
+  uint16_t id;
+  float tarX, tarY;
+  uint16_t tarT;
+  float linTol, thetaTol;
+  uint32_t timeout;
 };
 
-struct __attribute__((packed)) RosterPacket {
-    uint64_t id;
-    char     name[24]; // Fixed size for binary stability
+struct __attribute__((packed)) WaypointStatusPacket {
+  uint16_t timestamp;
+  uint16_t id;
 };
 
 struct __attribute__((packed)) WatchPacket {
-    uint32_t timestamp;
-    uint64_t id;
-    uint8_t  level;
-    float    value;
-    // Note: 'label' and 'fmt' are handled via ROSTER or skipped for bandwidth
+  uint16_t timestamp;
+  uint16_t id;
+  float value;
 };
 
-/**
- * @brief Header for variable-length text logs.
- * The actual message string follows immediately after this header in the buffer.
- */
+struct __attribute__((packed)) WatchTextPacketHeader {
+  uint16_t timestamp;
+  uint16_t id;
+};
+
+struct __attribute__((packed)) RosterPacket {
+  uint16_t id;
+  char name[24];
+};
+
 struct __attribute__((packed)) LogPacketHeader {
-    uint32_t timestamp;
-    uint8_t  level;
+  uint16_t timestamp;
 };
 
-// --- The Unified Telemetry Class ---
+static_assert(sizeof(PosePacket) == 14, "PosePacket layout changed");
+static_assert(sizeof(WaypointCreatedPacket) == 26, "WaypointCreatedPacket layout changed");
+static_assert(sizeof(WaypointStatusPacket) == 4, "WaypointStatusPacket layout changed");
+static_assert(sizeof(WatchPacket) == 8, "WatchPacket layout changed");
+static_assert(sizeof(WatchTextPacketHeader) == 4, "WatchTextPacketHeader layout changed");
+static_assert(sizeof(RosterPacket) == 26, "RosterPacket layout changed");
+static_assert(sizeof(LogPacketHeader) == 2, "LogPacketHeader layout changed");
 
 class Telemetry {
 public:
-    /**
-     * @brief Singleton access to the telemetry engine.
-     */
-    static Telemetry& getInstance();
+  static Telemetry& getInstance();
+  void setMinLevel(LogLevel level);
+  bool shouldLog(LogLevel level) const;
 
-    /**
-     * @brief Set the global minimum log level. 
-     * If a log's level is lower than this, it is discarded before processing.
-     */
-    void setMinLevel(LogLevel level);
-
-    /**
-     * @brief Core logic check: Should this level be processed?
-     */
-    bool shouldLog(LogLevel level) const;
-
-    // --- High-Speed Binary Methods ---
-
-    void sendPose(const PosePacket& pkt);
-    void sendWaypoint(const WaypointPacket& pkt);
-    void sendWatch(const WatchPacket& pkt);
-    void sendRoster(uint64_t id, const std::string& name);
-
-    /**
-     * @brief Sends a standard text log wrapped in a binary frame.
-     * This replaces the old printf-to-terminal logic.
-     */
-    void sendText(LogLevel level, const char* fmt, ...);
+  void sendPose(const PosePacket& pkt);
+  void sendWaypointCreated(const WaypointCreatedPacket& pkt);
+  void sendWaypointStatus(WPId id, uint8_t subType); // 2=Reached, 3=TimedOut
+  void sendWatch(WatchId id, LogLevel lvl, float val, bool tripped);
+  void sendWatchText(WatchId id, LogLevel lvl, const std::string& text, bool tripped);
+  void sendRoster(uint16_t id, bool isElevated = false);
+  void sendText(LogLevel level, const char* fmt, ...);
 
 private:
-    Telemetry() : m_minLevel(LogLevel::INFO) {}
-    
-    LogLevel m_minLevel;
-    pros::Mutex m_terminalMutex;
-
-    /**
-     * @brief Internal COBS encoder and UART writer.
-     * Frames data with 0x00 delimiters to prevent stream desync.
-     */
-    void transmit(MsgType type, const uint8_t* data, size_t len);
-
-    // Prevent copying
-    Telemetry(const Telemetry&) = delete;
-    Telemetry& operator=(const Telemetry&) = delete;
+  Telemetry() : m_minLevel(LogLevel::INFO) {}
+  LogLevel m_minLevel;
+  pros::Mutex m_terminalMutex;
+  void transmit(uint8_t header, const uint8_t* data, size_t len); // Use raw header
 };
-
 } // namespace mvlib

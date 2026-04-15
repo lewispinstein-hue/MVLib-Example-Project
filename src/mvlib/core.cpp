@@ -136,7 +136,11 @@ void Logger::start() {
       }
 
       if (m_config.logToTerminal.load()) {
-        fflush(stdout); 
+        if (m_timings.stdout_buffer_flush_interval != 0 &&
+            now - m_lastTerminalFlush >= m_timings.stdout_buffer_flush_interval) {
+          fflush(stdout);
+          m_lastTerminalFlush = now;
+        }
         pros::Task::delay_until(&now, m_timings.terminal_polling_rate);
       } else {
         pros::Task::delay_until(&now, m_timings.sd_polling_rate);
@@ -178,7 +182,7 @@ void Logger::Update() {
       double vy = (dt > 0) ? (pose->y - prevPose.y) / dt : 0.0;
       double avgSpeed = std::sqrt(vx * vx + vy * vy);
       leftVelocity = rightVelocity = fallbackSpeed = avgSpeed;
-      prevPose = *pose;
+      prevPose = pose.value();
       prevMs = nowMs;
     } else {
       leftVelocity = rightVelocity = fallbackSpeed;
@@ -186,25 +190,24 @@ void Logger::Update() {
   }
 
   if (m_config.printTelemetry.load() && pose.has_value()) {
-    double normTheta = fmod(pose->theta, 360.0);
-    if (normTheta < 0) normTheta += 360.0;
+    const double normTheta = normalizeDegrees360(pose->theta);
     
     if (std::isfinite(pose->x) && std::isfinite(pose->y) && std::isfinite(pose->theta)) {
-      // 1. Binary Terminal Blast
+      // Send binary through terminal
       if (m_config.logToTerminal.load()) {
         PosePacket pkt;
-        pkt.timestamp = pros::millis();
+        pkt.timestamp = static_cast<uint16_t>(pros::millis());
         pkt.x = (float)pose->x;
         pkt.y = (float)pose->y;
-        pkt.theta = (float)normTheta;
-        pkt.leftVel = (float)leftVelocity;
-        pkt.rightVel = (float)rightVelocity;
+        pkt.theta = packTelemetryTheta(pose->theta);
+        pkt.leftVel = packTelemetryVelocity(leftVelocity);
+        pkt.rightVel = packTelemetryVelocity(rightVelocity);
         Telemetry::getInstance().sendPose(pkt);
       }
 
-      // 2. ASCII SD Log
+      // Log standard ANSII to the sd card
       if (m_config.logToSD.load() && !m_sdLocked && m_sdFile) {
-        logToSD(LogLevel::OVERRIDE, "[POSE],%u,%.2f,%.2f,%.2f,%.1f,%.1f", 
+        logToSD(LogLevel::OVERRIDE, "[POSE],%u,%.2f,%.2f,%.2f,%.0f,%.0f", 
                 pros::millis(), pose->x, pose->y, normTheta, leftVelocity, rightVelocity);
       }
     }

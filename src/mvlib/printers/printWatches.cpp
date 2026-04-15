@@ -1,6 +1,8 @@
 #include "mvlib/core.hpp"
 #include "mvlib/telemetry.hpp"
-#include <inttypes.h>
+#include <cerrno>
+#include <cmath>
+#include <cstdlib>
 #include <string>
 
 namespace mvlib {
@@ -11,14 +13,13 @@ void Logger::printWatches() {
 
   uint32_t nowMs = pros::millis();
 
-  // --- 1. Watch Roster Beacon ---
   // Periodically sync watch IDs to labels so the frontend can resolve them
-  static uint32_t lastWatchRosterMs = 0;
-  if (nowMs - lastWatchRosterMs > 5000) {
+  if (m_timings.roster_sync_all_interval != 0 &&
+      nowMs - m_lastRosterFlush >= m_timings.roster_sync_all_interval) {
     for (auto& w : m_watches) {
-      Telemetry::getInstance().sendRoster(w.id, w.label);
+      Telemetry::getInstance().sendRoster(w.id, false);
     }
-    lastWatchRosterMs = nowMs;
+    m_lastRosterFlush = nowMs;
   }
 
   for (auto& w : m_watches) {
@@ -29,7 +30,7 @@ void Logger::printWatches() {
 
     if (!w.eval) continue;
 
-    auto [lvl, valueStr, label] = w.eval();
+    auto [lvl, valueStr, label, tripped] = w.eval();
 
     // Change detection
     if (w.onChange) {
@@ -43,33 +44,27 @@ void Logger::printWatches() {
     if (m_config.logToTerminal.load()) {
       bool sentAsBinary = false;
       
-      // Optimization: If the string looks like a number, send it as a raw float packet
-      if (!valueStr.empty() && (isdigit(valueStr[0]) || valueStr[0] == '-')) {
-        try {
-          float numericVal = std::stof(valueStr);
-          WatchPacket pkt;
-          pkt.timestamp = nowMs;
-          pkt.id = w.id;
-          pkt.level = static_cast<uint8_t>(lvl);
-          pkt.value = numericVal;
-          
-          Telemetry::getInstance().sendWatch(pkt);
+      // Prefer the compact binary watch packet when the rendered value is a pure float.
+      if (!valueStr.empty()) {
+        char* end = nullptr;
+        errno = 0;
+        const float numericVal = std::strtof(valueStr.c_str(), &end);
+        if (end != valueStr.c_str() && end != nullptr && *end == '\0' &&
+            errno != ERANGE && std::isfinite(numericVal)) {
+          Telemetry::getInstance().sendWatch(w.id, lvl, numericVal, tripped);
           sentAsBinary = true;
-        } catch (...) {
-          sentAsBinary = false;
         }
       }
 
-      // Fallback: If not numeric (e.g. "true"), send as framed binary text
+      // Non-numeric watches still use the structured binary watch channel.
       if (!sentAsBinary) {
-        Telemetry::getInstance().sendText(lvl, "[WATCH],%u,%" PRIu64 ",%s", 
-                                          nowMs, w.id, valueStr.c_str());
+        Telemetry::getInstance().sendWatchText(w.id, lvl, valueStr, tripped);
       }
     }
 
-    // --- 3. SD Dispatch (Human Readable) ---
+    // Log standard ANSII to the sd card
     if (m_config.logToSD.load() && !m_sdLocked && m_sdFile) {
-      logToSD(lvl, "[WATCH],%d,%s,%" PRIu64 ",%s,%s", 
+      logToSD(lvl, "[WATCH],%u,%s,%u,%s,%s", 
               nowMs, m_levelToString(lvl), w.id, label.c_str(), valueStr.c_str());
     }
   }

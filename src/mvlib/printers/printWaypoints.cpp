@@ -1,6 +1,5 @@
 #include "mvlib/core.hpp"
 #include "mvlib/telemetry.hpp"
-#include <inttypes.h>
 #include <cmath>
 
 namespace mvlib {
@@ -12,12 +11,13 @@ void Logger::printWaypoints() {
   uint32_t nowMs = pros::millis();
 
   // --- 1. Roster Beacon (Late-Joiner Support) ---
-  static uint32_t lastRosterMs = 0;
-  if (nowMs - lastRosterMs > 2000) {
+  if (m_timings.roster_sync_all_interval != 0 &&
+      nowMs - m_lastRosterFlush >= m_timings.roster_sync_all_interval) {
     for (auto& wp : m_waypoints) {
-      Telemetry::getInstance().sendRoster(wp.id, wp.name);
+      if (!wp.active) continue;
+      Telemetry::getInstance().sendRoster(wp.id);
     }
-    lastRosterMs = nowMs;
+    m_lastRosterFlush = nowMs;
   }
 
   auto pose = m_getPose ? m_getPose() : std::nullopt;
@@ -54,58 +54,39 @@ void Logger::printWaypoints() {
         off.timedOut = false;
       }
     }
-
-    // Determine State for Binary Packet
-    uint8_t binaryState = 0; // OFFSET
+    
+    // Match the older waypoint transition rules: first reach edge, then clear
+    // prevReached when leaving tolerance, then timeout if still active.
+    uint8_t subType = 0;
     bool shouldTrigger = false;
-    const char* statusStr = "OFFSET";
+    const char* statusStr = nullptr;
 
-    if (off.timedOut.value_or(false)) {
-      binaryState = 2; // TIMEDOUT
+    if (off.reached && (!wp.prevReached || !wp.params.retriggerable)) {
+      subType = 2; // REACHED
+      statusStr = "REACHED";
+      shouldTrigger = true;
+      wp.prevReached = true;
+      wp.active = wp.params.retriggerable;
+    } else if (!off.reached && wp.prevReached) {
+      wp.prevReached = false;
+    } else if (off.timedOut.value_or(false)) {
+      subType = 3; // TIMEDOUT
       statusStr = "TIMEDOUT";
       shouldTrigger = true;
       wp.active = false;
-    } else if (off.reached) {
-      binaryState = 1; // REACHED
-      statusStr = "REACHED";
-      if (!wp.prevReached || !wp.params.retriggerable) {
-        shouldTrigger = true;
-        wp.prevReached = true;
-        wp.active = wp.params.retriggerable;
-      }
-    } else {
-      wp.prevReached = false;
-      // Normal periodic offset log
-      if (wp.params.logOffsetEveryMs.has_value() && 
-          (nowMs - wp.lastPrintMs >= wp.params.logOffsetEveryMs.value())) {
-        shouldTrigger = true;
-        wp.lastPrintMs = nowMs;
-      }
     }
 
     if (!shouldTrigger) continue;
 
-    // --- 2. Binary Dispatch (Terminal) ---
+    // Send binary through terminal
     if (m_config.logToTerminal.load()) {
-      WaypointPacket pkt;
-      pkt.timestamp = nowMs;
-      pkt.id = wp.id;
-      pkt.state = binaryState;
-      pkt.offX = (float)off.offX;
-      pkt.offY = (float)off.offY;
-      pkt.offT = (float)off.offT.value_or(NAN);
-      pkt.totalOff = (float)off.totalOffset;
-      pkt.remainingTimeout = (int32_t)off.remainingTimeout.value_or(-1);
-      Telemetry::getInstance().sendWaypoint(pkt);
+      Telemetry::getInstance().sendWaypointStatus(wp.id, subType);
     }
 
-    // --- 3. ASCII Dispatch (SD Card) ---
+    // Log standard ANSII to the sd card
     if (m_config.logToSD.load() && !m_sdLocked && m_sdFile) {
-      logToSD(LogLevel::OVERRIDE, "[WPOINT],%u,%s,%" PRIu64 ",%s,%.2f,%.2f,%s,%s",
-              nowMs, statusStr, wp.id, wp.name.c_str(), 
-              off.offX, off.offY,
-              off.offT.has_value() ? std::to_string(off.offT.value()).c_str() : "NA",
-              off.remainingTimeout.has_value() ? std::to_string(off.remainingTimeout.value()).c_str() : "NA");
+      logToSD(LogLevel::OVERRIDE, "[WPOINT],%u,%s,%u,%s",
+              nowMs, statusStr, wp.id, wp.name.c_str());
     }
   }
 }

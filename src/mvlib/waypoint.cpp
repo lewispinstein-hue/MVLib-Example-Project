@@ -1,4 +1,5 @@
 #include "mvlib/core.hpp"
+#include "mvlib/telemetry.hpp"
 #include "mvlib/waypoint.hpp"
 #include <cmath>
 #include <cstdio> 
@@ -84,10 +85,8 @@ bool Logger::isWaypointReached(WPId id) {
 std::string Logger::getWaypointName(WPId id) {
   unique_lock lock(m_mutex);
   if (!lock.isLocked()) return {};
-  
-  auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
-                          [id](const InternalWaypoint& ic) { return ic.id == id; });
-  return (it != m_waypoints.end()) ? it->name : "";
+
+  return m_getWaypointNameUnlocked(id).value_or("");
 }
 
 bool Logger::isPrevReached(WPId id) {
@@ -144,7 +143,7 @@ WaypointHandle Logger::addWaypoint(std::string name, WaypointParams details) {
   // Use the ID before moving wp into the vector
   m_waypoints.push_back(std::move(wp));
 
-  logMessage(LogLevel::INFO, "[WPOINT],%d,CREATED,%" PRIu64 ",%s,%s",
+  logMessage(LogLevel::INFO, "[WPOINT],%d,CREATED,%d,%s,%s",
            pros::millis(), id, m_waypoints.back().name.c_str(), 
            formatParams(details).c_str());
   return WaypointHandle(id);
@@ -157,5 +156,67 @@ bool Logger::isWaypointActive(WPId id) {
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
   return (it != m_waypoints.end()) && it->active;
+}
+
+std::optional<std::string> Logger::m_getWaypointNameUnlocked(WPId id) const {
+  auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
+                         [id](const InternalWaypoint& ic) { return ic.id == id; });
+  if (it == m_waypoints.end()) return std::nullopt;
+
+  return it->name;
+}
+
+std::optional<std::string> Logger::m_getWatchNameUnlocked(WatchId id, bool isElevated) const {
+  auto it = std::find_if(m_watches.begin(), m_watches.end(),
+                         [id](const InternalWatch& watch) { return watch.id == id; });
+  if (it == m_watches.end()) return std::nullopt;
+
+  if (isElevated && !it->elevatedLabel.empty()) {
+    return it->elevatedLabel;
+  } else {
+    return it->label;
+  }
+}
+
+std::optional<std::string> Logger::m_getRosterNameUnlocked(uint16_t id, bool isElevated) const {
+  if (auto waypointName = m_getWaypointNameUnlocked(id)) return waypointName;
+  return m_getWatchNameUnlocked(id, isElevated);
+}
+
+bool Logger::resyncWaypointsRoster(WPId id) {
+  unique_lock lock(m_mutex);
+  if (!lock.isLocked()) return false;
+
+  auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
+                         [id](const InternalWaypoint& ic) { return ic.id == id; });
+  if (it == m_waypoints.end() || !it->active) return false;
+
+  Telemetry::getInstance().sendRoster(it->id);
+  m_lastRosterFlush = pros::millis();
+  return true;
+}
+
+void Logger::resyncAllWaypointsRoster() {
+  unique_lock lock(m_mutex);
+  if (!lock.isLocked()) return;
+
+  for (const auto& wp : m_waypoints) {
+    if (!wp.active) continue;
+    Telemetry::getInstance().sendRoster(wp.id);
+  }
+  m_lastRosterFlush = pros::millis();
+}
+
+void Logger::resyncAllWatchesRoster() {
+  unique_lock lock(m_mutex);
+  if (!lock.isLocked()) return;
+
+  for (const auto& watch : m_watches) {
+    Telemetry::getInstance().sendRoster(watch.id, false);
+    if (!watch.elevatedLabel.empty()) {
+      Telemetry::getInstance().sendRoster(watch.id, true);
+    }
+  }
+  m_lastRosterFlush = pros::millis();
 }
 } // namespace mvlib

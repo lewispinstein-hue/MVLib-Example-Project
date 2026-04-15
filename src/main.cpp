@@ -1,4 +1,5 @@
 #include "main.h"
+#include "pros/adi.hpp"
 #include <unistd.h>
 
 namespace control {
@@ -120,6 +121,7 @@ float rawRightX, rawLeftY;
 float LEFT_Y, RIGHT_X;
 float prevTurn, prevThrottle;
 
+pros::adi::DigitalIn b('A');
 void initialize() {
   rightMg.set_brake_mode_all(pros::MotorBrake::brake);
   leftMg.set_brake_mode_all(pros::MotorBrake::brake);
@@ -129,8 +131,11 @@ void initialize() {
   logger.setLogSystemInfo(true);
   logger.setLoggerMinLevel(mvlib::LogLevel::DEBUG);
   logger.setLogToSD(false);
+  
   logger.setTimings({
-    .terminal_polling_rate = 10
+    .sd_buffer_flush_interval = 500,
+    .terminal_polling_rate = 80,
+    .roster_sync_all_interval = 15000
   });
 
   mvlib::Pose pose{};
@@ -149,9 +154,14 @@ void initialize() {
   chassis.setPose(-45, 5.5, 90);
   // chassis.setPose(0, 0, 0);
 
-  // logger.watch("Throttle Wanted", mvlib::LogLevel::INFO, 150_mvMs, 
-  //   []() { return prevThrottle; }, 
-  //   mvlib::LevelOverride<float>{}, "%.2f");
+
+  logger.watch("Released", mvlib::LogLevel::INFO, true, 
+    []() { return (bool)b.get_value(); }, 
+    mvlib::LevelOverride<bool>{
+      .elevatedLevel = mvlib::LogLevel::WARN,
+      .predicate = PREDICATE(v == true),
+      .label = "Pressed"
+    }, "%.2f");
 
     logger.addWaypoint("Blue Left High Goal", {
     .tarX = 24,
@@ -249,13 +259,13 @@ void opcontrol() {
 
   float turn = control::expoTurn(RIGHT_X, 2, 10);
 
-  logger.watch("Turn Raw", mvlib::LogLevel::INFO, 150_mvMs, []() {
-    return controller.get_analog(ANALOG_RIGHT_X);
-  }, mvlib::LevelOverride<int32_t>{}, "%d");
+  // logger.watch("Turn Raw", mvlib::LogLevel::INFO, 150_mvMs, []() {
+  //   return controller.get_analog(ANALOG_RIGHT_X);
+  // }, mvlib::LevelOverride<int32_t>{}, "%d");
 
-  logger.watch("Turn Post-processing", mvlib::LogLevel::INFO, 150_mvMs, 
-    [&]() { return turn; },
-    mvlib::LevelOverride<float>{}, "%.2f");
+  // logger.watch("Turn Post-processing", mvlib::LogLevel::INFO, 150_mvMs, 
+  //   [&]() { return turn; },
+  //   mvlib::LevelOverride<float>{}, "%.2f");
 
   pros::Task telemetry(screenTask);
   // disp.drawBottomButtons(false);
@@ -267,6 +277,11 @@ void opcontrol() {
   constexpr uint8_t deadband = 10;
   static float prevThrottle = 0;
   static float prevTurn = 0;
+  pros::delay(3000);
+  logger.resyncAllWaypointsRoster();
+  pros::delay(3000);
+  logger.resyncAllWatchesRoster();
+
   while (true) {
     handleController();
      rawLeftY = controller.get_analog(ANALOG_LEFT_Y);
@@ -292,7 +307,6 @@ void opcontrol() {
      turn = control::expoTurn(RIGHT_X, 2, deadband);
 
     chassis.arcade(throttle, turn, false, 0.55);
-    logger.info("TESTING");
     pros::delay(15);
   }
 }

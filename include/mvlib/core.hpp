@@ -37,6 +37,7 @@
 #include "waypoint.hpp"
 
 #include <atomic>
+#include <cmath>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -109,7 +110,7 @@ enum class LogLevel : uint8_t {
 };
 
 // ---------- Generic variable watches ----------
-using WatchId = uint64_t;
+using WatchId = uint16_t;
 
 /**
  * @struct LevelOverride
@@ -167,6 +168,24 @@ struct Pose {
   double y{0};
   double theta{0};
 };
+
+inline double normalizeDegrees360(double degrees) {
+  if (!std::isfinite(degrees)) return 0.0;
+  double normalized = std::fmod(degrees, 360.0);
+  if (normalized < 0.0) normalized += 360.0;
+  return normalized;
+}
+
+inline uint16_t packTelemetryTheta(double degrees) {
+  // Encode [0, 360) into the full uint16 ring. Decoder should use 360 / 65536.
+  constexpr double kThetaScale = 65536.0 / 360.0;
+  return static_cast<uint16_t>(std::floor(normalizeDegrees360(degrees) * kThetaScale));
+}
+
+inline int8_t packTelemetryVelocity(double velocity) {
+  if (!std::isfinite(velocity)) return 0;
+  return static_cast<int8_t>(std::lround(std::clamp(velocity, -127.0, 127.0)));
+}
 
 /**
  * @class Logger
@@ -301,8 +320,27 @@ public:
     /**
      * @brief SD file flush interval. At 1s (default), 
      *        SD card flushes out of RAM every 1 second.
+     *
+     * @note This interval is used to flush the file buffer. 
+     *       It uses the standard fflush(file) function for flushing.
+     *
     */
     uint32_t sd_buffer_flush_interval = 1000;
+    
+    /**
+     * @brief Terminal output flush interval. At 1s (default), 
+     *        terminal output flushes out of its buffer
+     *        every 1 second. 
+     *
+     * @note This interval is used to flush the stdout buffer. 
+     *       It uses the standard fflush(stdout) function for flushing.
+     *
+     * @warning Use this to tune flushes to your specific robot
+     *          configuration. Lower values force the buffer to 
+     *          be flushed more frequently, while higher values
+     *          force flush the buffer less frequently.
+    */
+    uint32_t stdout_buffer_flush_interval = 400;
 
     /**
      * @brief Controls how often mvlib polls for new data and logs it. Default: 120ms
@@ -325,6 +363,13 @@ public:
      *       rates may lead to resource starvation of other tasks.
     */
     uint32_t terminal_polling_rate = 120;
+
+    /**
+     * @brief Minimum interval between watch and waypoint roster sync beacons.
+     *
+     * @note Lower values improve late-join recovery at the cost of bandwidth.
+    */
+    uint32_t roster_sync_all_interval = 8000;
   };
 
   /**
@@ -464,9 +509,18 @@ public:
    * This example creates a waypoint named "Blue left matchloader" with a 
    * target position of (70, -47), XY tolerance of 2, theta tolerance of 
    * 10 degrees, and a timeout of 5 seconds. It will also print the offset
-   * every 1000ms to MotionView.
+  * every 1000ms to MotionView.
    */
   WaypointHandle addWaypoint(std::string name, WaypointParams details);
+
+  /**
+   * @brief Re-send roster entries for all active waypoints. Use this to fix issues 
+   *        of waypoints not appearing in MotionView.
+   *
+   * @note Inactive waypoints are intentionally omitted so they stay dropped
+   *       from the viewer roster.
+   */
+  void resyncAllWaypointsRoster();
   
   // ------------------------------------------------------------------------
   // Watches
@@ -483,6 +537,15 @@ public:
    * @return True if successful.
    */
   bool setDefaultWatches(const DefaultWatches& watches);
+
+  /**
+   * @brief Re-send roster entries for all watches. Use this to fix issues 
+   *        of watches not appearing in MotionView.
+   *
+   * @note Watches with an elevated/predicate label will send both the default
+   *       and elevated roster labels.
+   */
+  void resyncAllWatchesRoster();
 
   /**
    * @brief Register a periodic watch on a getter function. The 
@@ -613,18 +676,34 @@ private:
    * @brief Internal watch record.
    */
   struct InternalWatch {
-    WatchId id{};                       /// @brief Watch identifier.
-    std::string label;                  /// @brief Watch display label.
-    LogLevel baseLevel{LogLevel::INFO}; /// @brief Base log level for normal samples.
-    uint32_t intervalMs{1000};          /// @brief Print interval (ms) when not onChange.
-    uint32_t lastPrintMs{0};            /// @brief Last print timestamp (ms).
-    std::string fmt;                    /// @brief Optional numeric format string.
+    /// @brief Watch identifier.
+    WatchId id{};
+    /// @brief Watch display label.
+    std::string label;
 
-    bool onChange = false;             /// @brief If true, prints only when value changes.
-    std::optional<std::string> lastValue = std::nullopt; /// @brief Last rendered value (for onChange).
+    /// @brief Alternate label used when the watch predicate is tripped.
+    std::string elevatedLabel;
+    
+    /// @brief Base log level for normal samples.
+    LogLevel baseLevel{LogLevel::INFO};
 
-    /// @brief Computes (level, rendered eval string, label) for the current sample.
-    std::function<std::tuple<LogLevel, std::string, std::string>()> eval;
+    /// @brief Print interval (ms) when not onChange.
+    uint32_t intervalMs{1000};
+    
+    /// @brief Last print timestamp (ms).
+    uint32_t lastPrintMs{0};
+
+    /// @brief Optional numeric format string.
+    std::string fmt{};
+
+    /// @brief If true, prints only when value changes.
+    bool onChange = false;
+
+    /// @brief Last rendered value (for onChange).
+    std::optional<std::string> lastValue = std::nullopt;
+
+    /// @brief Computes (level, rendered eval string, label, predicate) for the current sample.
+    std::function<std::tuple<LogLevel, std::string, std::string, bool>()> eval;  
   };
 
   /// @brief Next watch id to assign.
@@ -662,6 +741,7 @@ private:
     InternalWatch w;
     w.id = m_nextId++;
     w.label = std::move(label);
+    w.elevatedLabel = ov.label;
     w.baseLevel = baseLevel;
     w.intervalMs = intervalMs;
     w.onChange = onChange;
@@ -677,7 +757,7 @@ private:
     // When w.eval is called, it returns final log level, getter eval, final label
     w.eval = [baseLevel, labelCopy, fmtCopy, g = std::move(g), 
               ov = std::move(ov)]() mutable -> 
-              std::tuple<LogLevel, std::string, std::string> {
+              std::tuple<LogLevel, std::string, std::string, bool> {
 
       T v = static_cast<T>(g());
 
@@ -691,7 +771,7 @@ private:
       // Get label based on predicate 
       std::string displayOut = (tripped && !ov.label.empty()) ? ov.label : labelCopy;
 
-      return {lvl, std::move(rawOut), std::move(displayOut)};
+      return {lvl, std::move(rawOut), std::move(displayOut), tripped};
     };
 
     WatchId id = w.id;
@@ -707,12 +787,20 @@ private:
   // Waypoint internals
   // ------------------------------------------------------------------------
   struct InternalWaypoint {
-    WPId id{};               /// Internal ID
-    std::string name{};      /// Name as inputted by user
-    WaypointParams params;   /// Waypoint parameters
-    uint32_t lastPrintMs{};  /// Last time the waypoint was printed (params.printOffsetEveryMs)
-    uint32_t startTimeMs;    /// Creation time of the waypoint
-    bool active = true;      /// Is the waypoint active (not yet reached or timed out)?
+    /// @brief Internal ID
+    WPId id{};
+    
+    /// @brief Name as inputted by user
+    std::string name{};
+
+    /// @brief Waypoint parameters
+    WaypointParams params;
+
+    /// @brief Creation time of the waypoint
+    uint32_t startTimeMs;
+
+    /// @brief Is the waypoint active (not yet reached or timed out)?
+    bool active = true;
     bool prevReached = false;
   };
 
@@ -734,6 +822,18 @@ private:
 
   /// @brief Get the name of the WPId
   std::string getWaypointName(WPId id);
+
+  /// @brief Get the name of the WPId without taking m_mutex.
+  std::optional<std::string> m_getWaypointNameUnlocked(WPId id) const;
+
+  /// @brief Get the name of the WatchId without taking m_mutex.
+  std::optional<std::string> m_getWatchNameUnlocked(WatchId id, bool isElevated) const;
+
+  /// @brief Get the roster label for an ID without taking m_mutex.
+  std::optional<std::string> m_getRosterNameUnlocked(uint16_t id, bool isElevated) const;
+
+  /// @brief Re-send the roster entry for a single waypoint.
+  bool resyncWaypointsRoster(WPId id);
 
   /// @brief Returns true if the robot has reached the WPId
   bool isWaypointReached(WPId id);
@@ -789,7 +889,11 @@ private:
   // Position getters
   std::function<std::optional<Pose>()> m_getPose = nullptr;
   
+  uint32_t m_lastRosterFlush{0};
+  uint32_t m_lastTerminalFlush{0};
+
   // Friend classes
   friend class WaypointHandle;
+  friend class Telemetry;
 };
 } // namespace mvlib
