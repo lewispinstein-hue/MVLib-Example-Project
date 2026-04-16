@@ -2,6 +2,7 @@
 #include "mvlib/core.hpp"
 #include "mvlib/private/forwardLogMacros.h"
 #include "mvlib/telemetry.hpp"
+#include "pros/apix.h"
 #include <cmath>
 #include <algorithm>
 
@@ -57,6 +58,11 @@ Logger::Logger() {
 
   // Begin IO Handle for user logs by constructing singleton
   (void) Telemetry::getInstance(); 
+
+  // Disable PROS CBOS; we do it ourselves
+  pros::c::serctl(SERCTL_DISABLE_COBS, nullptr);
+  // Disable PROS prepending messages with "sout"
+  pros::c::serctl(SERCTL_DEACTIVATE, (void*)0x74756f73);
 }
 
 uint32_t Logger::status() const {

@@ -4,7 +4,6 @@
 #include <limits>
 #include <cmath>
 #include <cstdio> 
-#include <inttypes.h>
 #include <string>
 #include <algorithm>
 
@@ -93,7 +92,8 @@ std::string Logger::getWaypointName(WPId id) {
 bool Logger::isPrevReached(WPId id) {
   unique_lock lock(m_mutex);
   if (!lock.isLocked()) return false;
-  
+  if (m_waypoints.empty()) return false;
+
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
   return (it != m_waypoints.end()) ? it->prevReached : false;
@@ -102,7 +102,8 @@ bool Logger::isPrevReached(WPId id) {
 bool Logger::setPrevReached(WPId id, bool reached) {
   unique_lock lock(m_mutex);
   if (!lock.isLocked()) return false;
-  
+  if (m_waypoints.empty()) return false;
+
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
   if (it == m_waypoints.end()) return false;
@@ -125,6 +126,7 @@ static std::string formatParams(const WaypointParams& params) {
 WaypointHandle Logger::addWaypoint(std::string name, WaypointParams details) {
   unique_lock lock(m_mutex);
   if (!lock.isLocked()) return WaypointHandle(0);
+  if (!m_config.logToTerminal.load() && !m_config.logToSD.load()) return WaypointHandle(0);
 
   WPId id = m_nextId++;
   InternalWaypoint wp;
@@ -172,6 +174,7 @@ WaypointHandle Logger::addWaypoint(std::string name, WaypointParams details) {
 bool Logger::isWaypointActive(WPId id) {
   unique_lock lock(m_mutex);
   if (!lock.isLocked()) return false;
+  if (m_waypoints.empty()) return false;
 
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                           [id](const InternalWaypoint& ic) { return ic.id == id; });
@@ -179,6 +182,8 @@ bool Logger::isWaypointActive(WPId id) {
 }
 
 std::optional<std::string> Logger::m_getWaypointNameUnlocked(WPId id) const {
+  if (m_waypoints.empty()) return std::nullopt;
+
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                          [id](const InternalWaypoint& ic) { return ic.id == id; });
   if (it == m_waypoints.end()) return std::nullopt;
@@ -187,6 +192,8 @@ std::optional<std::string> Logger::m_getWaypointNameUnlocked(WPId id) const {
 }
 
 std::optional<std::string> Logger::m_getWatchNameUnlocked(WatchId id, bool isElevated) const {
+  if (m_watches.empty()) return std::nullopt;
+
   auto it = std::find_if(m_watches.begin(), m_watches.end(),
                          [id](const InternalWatch& watch) { return watch.id == id; });
   if (it == m_watches.end()) return std::nullopt;
@@ -206,6 +213,7 @@ std::optional<std::string> Logger::m_getRosterNameUnlocked(uint16_t id, bool isE
 bool Logger::resyncWaypointsRoster(WPId id) {
   unique_lock lock(m_mutex);
   if (!lock.isLocked()) return false;
+  if (m_waypoints.empty() || !m_config.logToTerminal.load()) return false;
 
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
                          [id](const InternalWaypoint& ic) { return ic.id == id; });
@@ -219,6 +227,7 @@ bool Logger::resyncWaypointsRoster(WPId id) {
 void Logger::resyncAllWaypointsRoster() {
   unique_lock lock(m_mutex);
   if (!lock.isLocked()) return;
+  if (m_waypoints.empty() || !m_config.logToTerminal.load()) return;
 
   for (const auto& wp : m_waypoints) {
     if (!wp.active) continue;
@@ -230,6 +239,7 @@ void Logger::resyncAllWaypointsRoster() {
 void Logger::resyncAllWatchesRoster() {
   unique_lock lock(m_mutex);
   if (!lock.isLocked()) return;
+  if (m_watches.empty() || !m_config.logToTerminal.load()) return;
 
   for (const auto& watch : m_watches) {
     Telemetry::getInstance().sendRoster(watch.id, watch.label, false);

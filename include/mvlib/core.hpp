@@ -43,7 +43,7 @@
 #include <vector>
 #include <string>
 
-#define MVLIB_VERSION 100100L // 1.1.0
+#define MVLIB_VERSION 200000L // 2.0.0
 
 namespace mvlib {
 
@@ -169,27 +169,18 @@ struct Pose {
   double theta{};
 };
 
-inline double normalizeDegrees360(double degrees) {
-  if (!std::isfinite(degrees)) return 0.0;
-  double normalized = std::fmod(degrees, 360.0);
-  if (normalized < 0.0) normalized += 360.0;
-  return normalized;
-}
-
-inline uint16_t packTelemetryTheta(double degrees) {
-  // Encode [0, 360) into the full uint16 ring. Decoder should use 360 / 65536.
-  constexpr double kThetaScale = 65536.0 / 360.0;
-  return static_cast<uint16_t>(std::floor(normalizeDegrees360(degrees) * kThetaScale));
-}
-
-inline int8_t packTelemetryVelocity(double velocity) {
-  if (!std::isfinite(velocity)) return 0;
-  return static_cast<int8_t>(std::lround(std::clamp(velocity, -127.0, 127.0)));
-}
-
 /**
  * @class Logger
  * @brief Singleton logging + telemetry manager.
+ *
+ * @warning After creating the logger instance (Logger::getInstance()), the
+ *          standard PROS terminal multiplexers (sout/serr) and native COBS 
+ *          encoding are deactivated to optimize VEXnet bandwidth. Do not 
+ *          use standard print functions (e.g., printf, std::cout) after 
+ *          instantiating the logger. Raw text will collide with the high-speed 
+ *          binary telemetry stream, resulting in corrupted packets and undefined 
+ *          behavior during decoder. Use Logger::info(), warn(), etc. for
+ *          safe logging.
  */
 class Logger {
 public:
@@ -488,6 +479,8 @@ public:
    * @note To access value of the waypoint, use the handle returned by this 
    *       function.
    *
+   * @note For performance reasons, names are truncated to 24 characters long.
+   *
    * @warning @c name is moved into the handle. Do not use @c name after passing 
    *          it to this function.
    *
@@ -556,6 +549,8 @@ public:
    *       repeatedly. Additionally, if the same .watch() is called 
    *       multible times, each watch will be separate and logged independently.
    *
+   * @note For performance reasons, names are truncated to 24 characters long.
+   *
    * @tparam Getter Callable that returns the value to render (numeric/bool/string/cstr).
    * @param label Display label for the watch.
    * @param baseLevel Level used for normal samples.
@@ -597,6 +592,8 @@ public:
    * @note Adding a watch is computationally expensive. Don't call 
    *       logger.watch() repeatedly. If the same .watch() is called 
    *       multible times, each watch will be separate and logged independently.
+   *
+   * @note For performance reasons, names are truncated to 24 characters long.
    *
    * @tparam Getter Callable that returns the value to render.
    * @param label Display label for the watch.
@@ -848,8 +845,7 @@ private:
    * @brief Emit a formatted log message. Automatically handles 
    *        terminal/SD logging.
    */
-  _MVLIB_PRINTF_CHECK(3, 4)
-  void logMessage(const LogLevel& level, const char *fmt, ...);
+  void logMessage(const LogLevel& level, const char *fmt, va_list args);
 
   /**
    * @brief Write a formatted log line to the SD log file.

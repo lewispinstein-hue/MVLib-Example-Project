@@ -1,6 +1,7 @@
 #include "mvlib/telemetry.hpp"
 #include "core.hpp"
 #include "pros/rtos.hpp"
+#include "pros/apix.h"
 #include <algorithm>
 #include <array>
 #include <cstdarg>
@@ -20,6 +21,8 @@ constexpr std::size_t kTelemetryQueueCapacity = 64;
 constexpr uint32_t kTelemetryQueueLockTimeoutMs = 2;
 constexpr uint32_t kTelemetryWriteRetryDelayMs = 15;
 constexpr std::size_t kTelemetryMaxWriteRetries = 8;
+
+constexpr uint32_t kTelemetryWaitForDataTimeoutMs = 12;
 
 struct TelemetryFrame {
   std::array<uint8_t, kTelemetryMaxEncodedFrameBytes> bytes{};
@@ -172,7 +175,7 @@ void Telemetry::sendRoster(uint16_t id, const std::string& name, bool isElevated
            reinterpret_cast<const uint8_t*>(&pkt), sizeof(RosterPacket));
 }
 
-void Telemetry::sendText(LogLevel level, const char* fmt, ...) {
+void Telemetry::sendLog(LogLevel level, const char* fmt, ...) {
   if (!shouldLog(level)) return;
 
   // 1. Format the string
@@ -202,15 +205,37 @@ void Telemetry::sendText(LogLevel level, const char* fmt, ...) {
 // The background consumer task
 void telemetryIoTask(void* ignore) {
   (void)ignore;
-  TelemetryFrame frame;
-  while (true) {
-    // Wait for a frame without wasting CPU
-    pros::Task::notify_take(true, TIMEOUT_MAX);
+  // A local buffer to batch multiple frames into one VEXos payload
+  std::array<uint8_t, 512> batchBuffer{};
+  std::size_t batchLen = 0;
 
-    // Drain the queue completely before going back to sleep
+  auto flushBatch = [&]() {
+    if (batchLen > 0) {
+      writeFrameBlocking(batchBuffer.data(), batchLen);
+      batchLen = 0;
+    }
+  };
+
+  while (true) {
+    // Wait up to Xms. If we time out, flush whatever is waiting.
+    // This gives Update() time to queue multiple frames back-to-back.
+    uint32_t notified = pros::Task::notify_take(true, kTelemetryWaitForDataTimeoutMs);
+
+    TelemetryFrame frame;
     while (dequeueTelemetryFrame(frame)) {
-      writeFrameBlocking(frame.bytes.data(), frame.len);
-    }  
+      // If adding this frame overflows the batch, flush the batch first
+      if (batchLen + frame.len > batchBuffer.size()) {
+        flushBatch();
+      }
+      std::memcpy(batchBuffer.data() + batchLen, frame.bytes.data(), frame.len);
+      batchLen += frame.len;
+    }
+
+    // Flush if we timed out (no recent data arriving) 
+    // OR if the batch is getting large enough to be efficient over the radio
+    if (!notified || batchLen >= 128) {
+      flushBatch();
+    }
   }
 }
 
@@ -218,16 +243,15 @@ Telemetry::Telemetry(LogLevel minLevel) : m_minLevel(minLevel) {
   m_transmitHandleTask = std::make_unique<pros::Task>(
     telemetryIoTask,
     nullptr,
-    TASK_PRIORITY_DEFAULT + 1,
+    TASK_PRIORITY_DEFAULT - 1,
     TASK_STACK_DEPTH_DEFAULT,
     "MVLib TelemetryIO Handler"
   );
 }
 
 void Telemetry::notifyTransmitTask() {
-  if (m_transmitHandleTask) {
-    m_transmitHandleTask->notify();
-  }
+  if (!m_transmitHandleTask) return;
+  m_transmitHandleTask->notify();
 }
 
 void Telemetry::writeFrameDirect(const uint8_t* data, size_t len) {

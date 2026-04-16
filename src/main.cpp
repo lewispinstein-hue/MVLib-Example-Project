@@ -1,5 +1,7 @@
 #include "main.h"
-#include "pros/adi.hpp"
+#include "mvlib/Optional/customOdom.hpp" 
+#include "pros/rtos.hpp"
+#include <random>
 #include <unistd.h>
 
 namespace control {
@@ -113,7 +115,26 @@ double expoTurn(const double& input, const double& expoTurn,
   if (fabs(blended) >= 1) return 127 * ((norm >= 0) ? 1 : -1);
   return blended * retExpo;
 }
-} // namespace control
+} // namespace control    
+
+void testMVLib() {
+  logger.debug("Hello world!");
+  logger.info("Hello world!");
+  logger.warn("Hello world!");
+  logger.error("Hello world!");
+  logger.fatal("Hello world!");
+  logger.watch("Test", mvlib::LogLevel::DEBUG, 5_mvS, 
+    []() { return 1; },
+    mvlib::LevelOverride<int>{
+      .elevatedLevel = mvlib::LogLevel::INFO,
+      .predicate = PREDICATE(v == 1),
+      .label = "Test Predicate"
+    }, "%d");
+  logger.resyncAllWatchesRoster();
+  logger.pause();
+  pros::delay(1000);
+  logger.resume();
+}
 
 std::atomic<bool> exportGraphWatches{false};
 
@@ -134,8 +155,8 @@ void initialize() {
 
   logger.setTimings({
     .sdBufferFlushInterval = 500,
-    .terminalPollingRate = 80,
-    .rosterSyncAllInterval = 15000
+    .terminalPollingRate = 90,
+    .rosterSyncAllInterval = 10000
   });
 
   static mvlib::Pose pose{
@@ -143,12 +164,27 @@ void initialize() {
     .y = 46,   
     .theta = 89
   };
-  mvlib::setOdom([&]() -> std::optional<mvlib::Pose> {
-    pose.x += 0.1;
-    pose.y += 0.1;
-    pose.theta += 0.1;
-    return pose;
-  });
+mvlib::setOdom([pose = mvlib::Pose{.x=23, .y=46, .theta=89}]() mutable -> std::optional<mvlib::Pose> {
+  if (true) {
+  // 1. Static initialization: This only happens ONCE, saving massive CPU cycles.
+  // We only need ONE generator for both X and Y.
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+  
+  // 2. Real distribution: Generates a smooth random decimal between -1.0 and 1.0.
+  // (This replaces your integer division trick)
+  static std::uniform_real_distribution<double> dist(-1.0, 1.0);
+
+  // 3. Apply the random noise
+  pose.x += dist(gen);
+  pose.y += dist(gen);
+  pose.theta += 0.1;
+  
+  return pose;
+  }
+});
+  // mvlib::setOdom(&chassis);
+
   logger.setRobot({
     .leftDrivetrain = &leftMg,
     .rightDrivetrain = &rightMg
@@ -159,7 +195,7 @@ void initialize() {
   // chassis.setPose(0, 0, 0);
 
 
-  logger.watch("Released", mvlib::LogLevel::INFO, true, 
+  logger.watch("Released", mvlib::LogLevel::INFO, 0.1_mvS, 
     []() { return (bool)b.get_value(); }, 
     mvlib::LevelOverride<bool>{
       .elevatedLevel = mvlib::LogLevel::WARN,
@@ -203,6 +239,8 @@ void initialize() {
     .retriggerable = true
   });
   logger.start();
+  
+  testMVLib();
 }
 
 void screenTask() {
@@ -282,11 +320,6 @@ void opcontrol() {
   constexpr uint8_t deadband = 10;
   static float prevThrottle = 0;
   static float prevTurn = 0;
-  pros::delay(3000);
-  logger.resyncAllWaypointsRoster();
-  pros::delay(3000);
-  logger.resyncAllWatchesRoster();
-
   while (true) {
     handleController();
      rawLeftY = controller.get_analog(ANALOG_LEFT_Y);
