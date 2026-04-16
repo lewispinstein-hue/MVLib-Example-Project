@@ -21,7 +21,9 @@
  * #include "mvlib/Optional/customOdom.hpp"
  * void initialize() {
  *   auto& logger = mvlib::Logger::getInstance();
- *   mvlib::setOdom([]() -> std::optional<Pose { ... });
+ *   mvlib::setOdom([]() -> std::optional<mvlib::Pose> {
+ *     return mvlib::Pose{0.0, 0.0, 0.0};
+ *   });
  *   logger.setRobot({
  *     .leftDrivetrain = &leftMg,
  *     .rightDrivetrain = &rightMg
@@ -382,7 +384,8 @@ public:
    * @brief Provide a custom pose getter (for any odometry library).
    * @param getter Callable that returns a Pose or std::nullopt if unavailable.
    *
-   * @note Prefer the adapters based on you odom library from include/mvlib/Optional
+   * @note Prefer the adapter that matches your odometry library from
+   *       include/mvlib/Optional when one is available.
    *
    * \b Example
    * @code
@@ -395,7 +398,7 @@ public:
    *   logger.setPoseGetter([&]() -> std::optional<mvlib::Pose> {
    *     lemlib::Pose pose = chassis.getPose(); 
    *     if (!std::isfinite(pose.x) || !std::isfinite(pose.y)) return std::nullopt;
-   *     return mvlib::Pose(pose.x, pose.y, pose.theta);
+   *     return mvlib::Pose{pose.x, pose.y, pose.theta};
    *   });
    * }
    * @endcode
@@ -405,20 +408,47 @@ public:
   /**
    * @brief Provide robot component references used by telemetry helpers.
    * @param drivetrain drivetrain refs.
-   * \return True if refs were accepted (e.g., non-null and consistent).
+   * @param useSpeedEstimation If true, uses speed estimation from odometry if
+   *                           available instead of actual motor-reported velocity.
+   *
+   * \return True if refs were accepted (e.g., non-null and consistent), false
+   *         otherwise.
    *
    * @note If you do not call this, drivetrain speed will be approximated from 
    *       pose. This is not recommended.
    */
   bool setRobot(Drivetrain drivetrain, bool useSpeedEstimation = false);
 
+  /**
+  * @brief Sets the SD card directory for saving log files.
+  *
+  * @note The folder must already exist on the SD card.
+  * @note Pass a PROS SD path relative to `/usd`, starting with `\\`
+  *       (for example `\\logs`, not `/usd/logs`).
+  *
+  * @param folder        Absolute path to the directory (e.g. "\\logs").
+  * @param disableOnFail If true, permanently locks/disables SD logging if the folder is missing.
+  *                      If false, the logger falls back to the SD card root directory on failure.
+  *
+  * \return true if the folder exists and was set successfully, false otherwise. 
+  *
+  * \b Example
+  * @code
+  * auto& logger = mvlib::Logger::getInstance();
+  * // Route logs to "\telemetry". Disable SD logging entirely if the folder doesn't exist.
+  * if (!logger.setLoggingFolder("\\telemetry", true)) {
+  *   logger.warn("SD logging disabled: \\telemetry folder not found.");
+  * }
+  * @endcode
+  */
+  bool setLoggingFolder(const char *folder, bool disableOnFail = false);
   // ------------------------------------------------------------------------
   // Logging
   // ------------------------------------------------------------------------
 
   /**
    * @brief Emit a computer-formatted log message to MotionView. Unlike the LOG_
-   *        macros, these function will produce logs MotionView will parse and 
+   *        macros, these functions produce logs MotionView can parse and
    *        display. These functions only differ in the severity level that they 
    *        log at. 
    *
@@ -473,7 +503,7 @@ public:
   /**
    * @brief Add a waypoint to the logger.
    * @param name Name of the waypoint.
-   * @param details Required waypoint details (x, y, theta, tol, etx)
+   * @param details Waypoint target and tolerance settings.
    * @return A handle to the waypoint.
    *
    * @note To access value of the waypoint, use the handle returned by this 
@@ -481,28 +511,24 @@ public:
    *
    * @note For performance reasons, names are truncated to 24 characters long.
    *
-   * @warning @c name is moved into the handle. Do not use @c name after passing 
-   *          it to this function.
-   *
    * \b Example
    * @code
    * auto& logger = mvlib::Logger::getInstance();
    * auto BL_MTL = logger.addWaypoint("Blue left matchloader", {
-   *   .tarX = 70, 
-   *   .tarY = -47, 
+   *   .tarX = 70,
+   *   .tarY = -47,
    *   .tarT = 0,
    *   .linearTol = 2,
    *   .thetaTol = 10,
    *   .timeoutMs = 5_mvS,
-   *   .printOffsetEveryMs = 1_mvS
    * });
    * auto off = BL_MTL.getOffset();
-   * printf("BL_MTL CURRENT OFFSET: %.1f, %.1f, %.1f.\n", off.offX, off.offY, off.offT.value());
+   * logger.info("BL_MTL offset: %.1f, %.1f, %.1f",
+   *             off.offX, off.offY, off.offT.value_or(0.0));
    * @endcode
    * This example creates a waypoint named "Blue left matchloader" with a 
    * target position of (70, -47), XY tolerance of 2, theta tolerance of 
-   * 10 degrees, and a timeout of 5 seconds. It will also print the offset
-  * every 1000ms to MotionView.
+   * 10 degrees, and a timeout of 5 seconds.
    */
   WaypointHandle addWaypoint(std::string name, WaypointParams details);
 
@@ -545,9 +571,9 @@ public:
    *        getter is sampled every intervalMs and printed at baseLevel, unless
    *        the optional override predicate elevates the level.
    *
-   * @note Adding a watch is computationally expensive. Don't call logger.watch() 
-   *       repeatedly. Additionally, if the same .watch() is called 
-   *       multible times, each watch will be separate and logged independently.
+   * @note Adding a watch is computationally expensive. Don't call logger.watch()
+   *       repeatedly. Additionally, if the same .watch() is called
+   *       multiple times, each watch will be separate and logged independently.
    *
    * @note For performance reasons, names are truncated to 24 characters long.
    *
@@ -589,9 +615,9 @@ public:
   /**
    * @brief Register a watch that prints only when the rendered value changes.
    *
-   * @note Adding a watch is computationally expensive. Don't call 
-   *       logger.watch() repeatedly. If the same .watch() is called 
-   *       multible times, each watch will be separate and logged independently.
+   * @note Adding a watch is computationally expensive. Don't call
+   *       logger.watch() repeatedly. If the same .watch() is called
+   *       multiple times, each watch will be separate and logged independently.
    *
    * @note For performance reasons, names are truncated to 24 characters long.
    *
@@ -865,8 +891,10 @@ private:
 
   uint32_t m_lastFileFlush{0};
   FILE *m_sdFile = nullptr;
-  char m_currentFilename[128] = "";
+  char m_currentFilename[128] = {};
   const char *date = __DATE__; // Last upload date as fallback for no RTC
+  char m_loggingFolder[24] = "\\";
+
 
   volatile bool m_sdLocked = false;    // Has sd card failed?
   bool m_started = false;     // Has start() been called?

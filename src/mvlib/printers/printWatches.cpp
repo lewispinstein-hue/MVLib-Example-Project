@@ -12,15 +12,6 @@ void Logger::printWatches() {
 
   uint32_t nowMs = pros::millis();
 
-  // Periodically sync watch IDs to labels so the frontend can resolve them
-  if (m_timings.rosterSyncAllInterval != 0 &&
-      nowMs - m_lastRosterFlush >= m_timings.rosterSyncAllInterval) {
-    for (auto& w : m_watches) {
-      Telemetry::getInstance().sendRoster(w.id, w.label, false);
-    }
-    m_lastRosterFlush = nowMs;
-  }
-
   for (auto& w : m_watches) {
     // Frequency gating
     if (!w.onChange && w.lastPrintMs != 0 && (nowMs - w.lastPrintMs) < w.intervalMs) {

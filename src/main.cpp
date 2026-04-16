@@ -1,11 +1,33 @@
 #include "main.h"
-#include "mvlib/Optional/customOdom.hpp" 
+#include "mvlib/Optional/lemlib.hpp" 
 #include "pros/rtos.hpp"
 #include <random>
 #include <unistd.h>
 
 namespace control {
- 
+void arcade(int throttle, int turn, float desaturateBias) {
+  // desaturate motors based on joyBias
+  if (std::abs(throttle) + std::abs(turn) > 127) {
+    int oldThrottle = throttle;
+    int oldTurn = turn;
+    throttle *= (1 - desaturateBias * std::abs(oldTurn / 127.0));
+    turn *= (1 - (1 - desaturateBias) * std::abs(oldThrottle / 127.0));
+    // ensure the sum of the two values is equal to 127
+    // this check is necessary because of integer division
+    if (std::abs(turn) + std::abs(throttle) == 126) {
+      if (desaturateBias < 0.5) throttle += throttle < 0 ? -1 : 1;
+      else turn += turn < 0 ? -1 : 1;
+    }
+  }
+
+  int leftPower = throttle + turn;
+  int rightPower = throttle - turn;
+
+  // Scale drive to ±600 for motor velocity
+  leftMg.move_velocity(leftPower * 4.7244094488);
+  rightMg.move_velocity(rightPower * 4.7244094488);
+}
+
 double normVel(double rpm) {
   double v = (rpm / 4.7244094488); // Locked at blue gearset
   // If your using a different gearset, change this to (maxRPM / 127)
@@ -154,7 +176,7 @@ void initialize() {
   logger.setLogToSD(false);
 
   logger.setTimings({
-    .sdBufferFlushInterval = 500,
+    .stdoutBufferFlushInterval = 1000,
     .terminalPollingRate = 90,
     .rosterSyncAllInterval = 10000
   });
@@ -164,26 +186,27 @@ void initialize() {
     .y = 46,   
     .theta = 89
   };
-mvlib::setOdom([pose = mvlib::Pose{.x=23, .y=46, .theta=89}]() mutable -> std::optional<mvlib::Pose> {
-  if (true) {
-  // 1. Static initialization: This only happens ONCE, saving massive CPU cycles.
-  // We only need ONE generator for both X and Y.
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  
-  // 2. Real distribution: Generates a smooth random decimal between -1.0 and 1.0.
-  // (This replaces your integer division trick)
-  static std::uniform_real_distribution<double> dist(-1.0, 1.0);
 
-  // 3. Apply the random noise
-  pose.x += dist(gen);
-  pose.y += dist(gen);
-  pose.theta += 0.1;
+// mvlib::setOdom([pose = mvlib::Pose{.x=23, .y=46, .theta=89}]() mutable -> std::optional<mvlib::Pose> {
+//   if (true) {
+//   // 1. Static initialization: This only happens ONCE, saving massive CPU cycles.
+//   // We only need ONE generator for both X and Y.
+//   static std::random_device rd;
+//   static std::mt19937 gen(rd());
   
-  return pose;
-  }
-});
-  // mvlib::setOdom(&chassis);
+//   // 2. Real distribution: Generates a smooth random decimal between -1.0 and 1.0.
+//   // (This replaces your integer division trick)
+//   static std::uniform_real_distribution<double> dist(-1.0, 1.0);
+
+//   // 3. Apply the random noise
+//   pose.x += dist(gen);
+//   pose.y += dist(gen);
+//   pose.theta += 0.1;
+  
+//   return pose;
+//   }
+// });
+  mvlib::setOdom(&chassis);
 
   logger.setRobot({
     .leftDrivetrain = &leftMg,
@@ -193,15 +216,6 @@ mvlib::setOdom([pose = mvlib::Pose{.x=23, .y=46, .theta=89}]() mutable -> std::o
   chassis.calibrate();
   chassis.setPose(-45, 5.5, 90);
   // chassis.setPose(0, 0, 0);
-
-
-  logger.watch("Released", mvlib::LogLevel::INFO, 0.1_mvS, 
-    []() { return (bool)b.get_value(); }, 
-    mvlib::LevelOverride<bool>{
-      .elevatedLevel = mvlib::LogLevel::WARN,
-      .predicate = PREDICATE(v == true),
-      .label = "Pressed"
-    }, "%.2f");
 
     logger.addWaypoint("Blue Left High Goal", {
     .tarX = 24,
@@ -239,8 +253,8 @@ mvlib::setOdom([pose = mvlib::Pose{.x=23, .y=46, .theta=89}]() mutable -> std::o
     .retriggerable = true
   });
   logger.start();
-  
-  testMVLib();
+
+  // testMVLib();
 }
 
 void screenTask() {
@@ -302,13 +316,13 @@ void opcontrol() {
 
   float turn = control::expoTurn(RIGHT_X, 2, 10);
 
-  // logger.watch("Turn Raw", mvlib::LogLevel::INFO, 150_mvMs, []() {
-  //   return controller.get_analog(ANALOG_RIGHT_X);
-  // }, mvlib::LevelOverride<int32_t>{}, "%d");
+  logger.watch("Turn Raw", mvlib::LogLevel::INFO, 200_mvMs, []() {
+    return controller.get_analog(ANALOG_RIGHT_X);
+  }, mvlib::LevelOverride<int32_t>{}, "%d");
 
-  // logger.watch("Turn Post-processing", mvlib::LogLevel::INFO, 150_mvMs, 
-  //   [&]() { return turn; },
-  //   mvlib::LevelOverride<float>{}, "%.2f");
+  logger.watch("Throttle Raw", mvlib::LogLevel::INFO, 200_mvMs, 
+    [&]() { return controller.get_analog(ANALOG_LEFT_Y); },
+    mvlib::LevelOverride<int32_t>{}, "%d");
 
   pros::Task telemetry(screenTask);
   // disp.drawBottomButtons(false);
@@ -342,9 +356,9 @@ void opcontrol() {
     prevTurn = RIGHT_X;
 
     float throttle = control::expoThrottle(LEFT_Y, 1.9, deadband);
-     turn = control::expoTurn(RIGHT_X, 2, deadband);
+    turn = control::expoTurn(RIGHT_X, 1.3, deadband);
 
-    chassis.arcade(throttle, turn, false, 0.55);
+    control::arcade(throttle, turn, 0.5);
     pros::delay(15);
   }
 }

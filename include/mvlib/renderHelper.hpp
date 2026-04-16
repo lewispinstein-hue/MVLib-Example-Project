@@ -6,6 +6,7 @@
 */
 
 #include <string>
+#include <cstdio>
 
 namespace mvlib {
 /**
@@ -45,7 +46,7 @@ static std::string renderValue(const T& v, const std::string& fmt) {
   if constexpr (std::is_floating_point_v<T>) {
     if (!fmt.empty()) {
       char buf[256];
-      std::snprintf(buf, sizeof(buf), fmt.c_str(), (double)v);
+      snprintf(buf, sizeof(buf), fmt.c_str(), (double)v);
       return std::string(buf);
     }
     return std::to_string((double)v);

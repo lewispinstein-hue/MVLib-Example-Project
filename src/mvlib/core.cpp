@@ -15,10 +15,9 @@ Logger &Logger::getInstance() {
 
 bool Logger::setRobot(Drivetrain drivetrain, bool useSpeedEstimation) {
   if (m_configSet) {
-    _MVLIB_FORWARD_WARN("setRobot(Drivetrain) called twice!");
+    _MVLIB_FORWARD_WARN("setRobot(Drivetrain) called after successfully being set!");
     return false;
   }
-  m_configSet = true;
   m_forceSpeedEstimation = useSpeedEstimation;
 
   if (!drivetrain.leftDrivetrain || !drivetrain.rightDrivetrain) {
@@ -32,6 +31,7 @@ bool Logger::setRobot(Drivetrain drivetrain, bool useSpeedEstimation) {
   _MVLIB_FORWARD_DEBUG("setRobot() successfully set variables!");
 
   m_configValid = m_checkRobotConfig();
+  m_configSet = true;
   return true;
 }
 
@@ -72,8 +72,9 @@ uint32_t Logger::status() const {
 
 void Logger::pause(bool byForce) {
   uint32_t st = status();
-  bool isPauseable = st != pros::E_TASK_STATE_DELETED && st != pros::E_TASK_STATE_INVALID &&
-      st != pros::E_TASK_STATE_SUSPENDED;
+  bool isPauseable = st != pros::E_TASK_STATE_DELETED && 
+                     st != pros::E_TASK_STATE_INVALID &&
+                     st != pros::E_TASK_STATE_SUSPENDED;
 
   if (isPauseable && byForce) {
     m_task->suspend();
@@ -161,6 +162,14 @@ void Logger::start() {
 void Logger::Update() {
   if (m_config.printWatches.load()) printWatches();
   if (m_config.printWaypoints.load()) printWaypoints();
+
+  // Periodically sync IDs to labels so the frontend can resolve them
+  if (m_timings.rosterSyncAllInterval != 0 &&
+      pros::millis() - m_lastRosterFlush >= m_timings.rosterSyncAllInterval) {
+    this->resyncAllWatchesRoster();
+    this->resyncAllWaypointsRoster();
+    m_lastRosterFlush = pros::millis();
+  }
 
   static double leftVelocity, rightVelocity;
   std::optional<Pose> pose = std::nullopt;

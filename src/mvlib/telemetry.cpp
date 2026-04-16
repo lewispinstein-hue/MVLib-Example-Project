@@ -11,38 +11,38 @@
 
 namespace mvlib {
 namespace {
-constexpr std::size_t kTelemetryMaxPayloadBytes =
+constexpr size_t kTelemetryMaxPayloadBytes =
   std::max(sizeof(LogPacketHeader), sizeof(WatchTextPacketHeader)) + kTelemetryMaxTextBytes;
-constexpr std::size_t kTelemetryMaxRawFrameBytes = kTelemetryMaxPayloadBytes + 1;
-constexpr std::size_t kTelemetryMaxEncodedFrameBytes =
+constexpr size_t kTelemetryMaxRawFrameBytes = kTelemetryMaxPayloadBytes + 1;
+constexpr size_t kTelemetryMaxEncodedFrameBytes =
   kTelemetryMaxRawFrameBytes + (kTelemetryMaxRawFrameBytes / 254) + 2;
 
-constexpr std::size_t kTelemetryQueueCapacity = 64;
+constexpr size_t kTelemetryQueueCapacity = 64;
 constexpr uint32_t kTelemetryQueueLockTimeoutMs = 2;
 constexpr uint32_t kTelemetryWriteRetryDelayMs = 15;
-constexpr std::size_t kTelemetryMaxWriteRetries = 8;
+constexpr size_t kTelemetryMaxWriteRetries = 8;
 
 constexpr uint32_t kTelemetryWaitForDataTimeoutMs = 12;
 
 struct TelemetryFrame {
   std::array<uint8_t, kTelemetryMaxEncodedFrameBytes> bytes{};
-  std::size_t len{0};
+  size_t len{0};
 };
 
 std::array<TelemetryFrame, kTelemetryQueueCapacity> telemetryQueue{};
-std::size_t telemetryQueueHead = 0;
-std::size_t telemetryQueueTail = 0;
-std::size_t telemetryQueueCount = 0;
+size_t telemetryQueueHead = 0;
+size_t telemetryQueueTail = 0;
+size_t telemetryQueueCount = 0;
 pros::Mutex telemetryQueueMutex;
 pros::Mutex telemetryWriteMutex;
 
-bool enqueueTelemetryFrame(const uint8_t* data, std::size_t len) {
+bool enqueueTelemetryFrame(const uint8_t *data, size_t len) {
   if (!telemetryQueueMutex.take(kTelemetryQueueLockTimeoutMs)) return false;
 
   const bool hasCapacity = telemetryQueueCount < kTelemetryQueueCapacity;
   if (hasCapacity) {
     auto& slot = telemetryQueue[telemetryQueueTail];
-    std::memcpy(slot.bytes.data(), data, len);
+    memcpy(slot.bytes.data(), data, len);
     slot.len = len;
     telemetryQueueTail = (telemetryQueueTail + 1) % kTelemetryQueueCapacity;
     ++telemetryQueueCount;
@@ -72,10 +72,10 @@ bool dequeueTelemetryFrame(TelemetryFrame& frame) {
   return hasFrame;
 }
 
-void writeFrameBlocking(const uint8_t* data, std::size_t len) {
+void writeFrameBlocking(const uint8_t * data, size_t len) {
   telemetryWriteMutex.take();
-  std::size_t totalWritten = 0;
-  std::size_t retryCount = 0;
+  size_t totalWritten = 0;
+  size_t retryCount = 0;
   while (totalWritten < len) {
     int result = write(1, data + totalWritten, len - totalWritten);
     if (result <= 0) {
@@ -84,7 +84,7 @@ void writeFrameBlocking(const uint8_t* data, std::size_t len) {
       continue;
     }
     retryCount = 0;
-    totalWritten += static_cast<std::size_t>(result);
+    totalWritten += static_cast<size_t>(result);
   }
   telemetryWriteMutex.give();
 }
@@ -112,13 +112,13 @@ bool Telemetry::shouldLog(LogLevel level) const {
 void Telemetry::sendPose(const PosePacket& pkt) {
   // Pose is high-priority system data, so it gets OVERRIDE level
   transmit(encodeMsgAll(LogLevel::OVERRIDE, MsgType::POSE),
-           reinterpret_cast<const uint8_t*>(&pkt), sizeof(PosePacket));
+           reinterpret_cast<const uint8_t *>(&pkt), sizeof(PosePacket));
 }
 
 void Telemetry::sendWaypointCreated(const WaypointCreatedPacket& pkt) {
   // SubType 1 = Created
   transmit(encodeMsgAll(LogLevel::OVERRIDE, MsgType::WPOINT, 1), 
-           reinterpret_cast<const uint8_t*>(&pkt), sizeof(WaypointCreatedPacket));
+           reinterpret_cast<const uint8_t *>(&pkt), sizeof(WaypointCreatedPacket));
 }
 
 void Telemetry::sendWaypointStatus(WPId id, uint8_t subType) {
@@ -130,7 +130,7 @@ void Telemetry::sendWaypointStatus(WPId id, uint8_t subType) {
   pkt.id = id;
   
   transmit(encodeMsgAll(LogLevel::OVERRIDE, MsgType::WPOINT, subType), 
-           reinterpret_cast<const uint8_t*>(&pkt), sizeof(WaypointStatusPacket));
+           reinterpret_cast<const uint8_t *>(&pkt), sizeof(WaypointStatusPacket));
 }
 
 void Telemetry::sendWatch(WatchId id, LogLevel lvl, float val, bool tripped) {
@@ -143,7 +143,7 @@ void Telemetry::sendWatch(WatchId id, LogLevel lvl, float val, bool tripped) {
   
   // SubType 1 indicates the watch predicate was tripped (elevated)
   transmit(encodeMsgAll(lvl, MsgType::WATCH, tripped ? 1 : 0), 
-           reinterpret_cast<const uint8_t*>(&pkt), sizeof(WatchPacket));
+           reinterpret_cast<const uint8_t *>(&pkt), sizeof(WatchPacket));
 }
 
 void Telemetry::sendWatchText(WatchId id, LogLevel lvl, const std::string& text, bool tripped) {
@@ -153,12 +153,12 @@ void Telemetry::sendWatchText(WatchId id, LogLevel lvl, const std::string& text,
   header.timestamp = static_cast<uint16_t>(pros::millis());
   header.id = id;
 
-  const std::size_t textLen = std::min(text.size(), kTelemetryMaxTextBytes);
-  const std::size_t totalPayloadSize = sizeof(WatchTextPacketHeader) + textLen;
+  const size_t textLen = std::min(text.size(), kTelemetryMaxTextBytes);
+  const size_t totalPayloadSize = sizeof(WatchTextPacketHeader) + textLen;
   std::array<uint8_t, kTelemetryMaxPayloadBytes> payload{};
 
-  std::memcpy(payload.data(), &header, sizeof(WatchTextPacketHeader));
-  std::memcpy(payload.data() + sizeof(WatchTextPacketHeader), text.data(), textLen);
+  memcpy(payload.data(), &header, sizeof(WatchTextPacketHeader));
+  memcpy(payload.data() + sizeof(WatchTextPacketHeader), text.data(), textLen);
 
   // SubType 2 = textual watch sample, SubType 3 = textual watch sample with tripped predicate.
   transmit(encodeMsgAll(lvl, MsgType::WATCH, tripped ? 3 : 2), payload.data(), totalPayloadSize);
@@ -167,22 +167,22 @@ void Telemetry::sendWatchText(WatchId id, LogLevel lvl, const std::string& text,
 void Telemetry::sendRoster(uint16_t id, const std::string& name, bool isElevated) {
   RosterPacket pkt;
   pkt.id = id;
-  std::memset(pkt.name, 0, sizeof(pkt.name));
-  std::strncpy(pkt.name, name.c_str(), sizeof(pkt.name) - 1);
+  memset(pkt.name, 0, sizeof(pkt.name));
+  strncpy(pkt.name, name.c_str(), sizeof(pkt.name) - 1);
   
   // SubType 1 indicates this is the secondary/elevated label for the ID
   transmit(encodeMsgAll(LogLevel::OVERRIDE, MsgType::ROSTER, isElevated ? 1 : 0), 
-           reinterpret_cast<const uint8_t*>(&pkt), sizeof(RosterPacket));
+           reinterpret_cast<const uint8_t *>(&pkt), sizeof(RosterPacket));
 }
 
-void Telemetry::sendLog(LogLevel level, const char* fmt, ...) {
+void Telemetry::sendLog(LogLevel level, const char *fmt, ...) {
   if (!shouldLog(level)) return;
 
   // 1. Format the string
   std::array<char, kTelemetryMaxTextBytes + 1> textBuf{};
   va_list args;
   va_start(args, fmt);
-  int textLen = std::vsnprintf(textBuf.data(), textBuf.size(), fmt, args);
+  int textLen = vsnprintf(textBuf.data(), textBuf.size(), fmt, args);
   va_end(args);
 
   if (textLen < 0) return;
@@ -194,20 +194,21 @@ void Telemetry::sendLog(LogLevel level, const char* fmt, ...) {
   LogPacketHeader header;
   header.timestamp = static_cast<uint16_t>(pros::millis());
 
-  const std::size_t totalPayloadSize = sizeof(LogPacketHeader) + static_cast<std::size_t>(textLen);
+  const size_t totalPayloadSize = sizeof(LogPacketHeader) + static_cast<size_t>(textLen);
   std::array<uint8_t, kTelemetryMaxPayloadBytes> payload;
 
-  std::memcpy(payload.data(), &header, sizeof(LogPacketHeader));
-  std::memcpy(payload.data() + sizeof(LogPacketHeader), textBuf.data(), static_cast<std::size_t>(textLen));
+  memcpy(payload.data(), &header, sizeof(LogPacketHeader));
+  memcpy(payload.data() + sizeof(LogPacketHeader), textBuf.data(), static_cast<size_t>(textLen));
 
   transmit(encodeMsgAll(level, MsgType::LOG), payload.data(), totalPayloadSize);
 }
+
 // The background consumer task
-void telemetryIoTask(void* ignore) {
+void telemetryIoTask(void *ignore) {
   (void)ignore;
   // A local buffer to batch multiple frames into one VEXos payload
   std::array<uint8_t, 512> batchBuffer{};
-  std::size_t batchLen = 0;
+  size_t batchLen = 0;
 
   auto flushBatch = [&]() {
     if (batchLen > 0) {
@@ -227,7 +228,7 @@ void telemetryIoTask(void* ignore) {
       if (batchLen + frame.len > batchBuffer.size()) {
         flushBatch();
       }
-      std::memcpy(batchBuffer.data() + batchLen, frame.bytes.data(), frame.len);
+      memcpy(batchBuffer.data() + batchLen, frame.bytes.data(), frame.len);
       batchLen += frame.len;
     }
 
@@ -254,7 +255,7 @@ void Telemetry::notifyTransmitTask() {
   m_transmitHandleTask->notify();
 }
 
-void Telemetry::writeFrameDirect(const uint8_t* data, size_t len) {
+void Telemetry::writeFrameDirect(const uint8_t * data, size_t len) {
   writeFrameBlocking(data, len);
 }
 
@@ -263,8 +264,7 @@ void Telemetry::writeFrameDirect(const uint8_t* data, size_t len) {
  * Prevents 0x00 bytes in the data stream by using them as frame delimiters.
  */
 void Telemetry::transmit(uint8_t header, const uint8_t *data, size_t len) {
-  if (data == nullptr || len > kTelemetryMaxPayloadBytes)
-    return;
+  if (data == nullptr || len > kTelemetryMaxPayloadBytes) return;
 
   // Uninitialized buffer for speed
   std::array<uint8_t, kTelemetryMaxEncodedFrameBytes> encodedBuf;

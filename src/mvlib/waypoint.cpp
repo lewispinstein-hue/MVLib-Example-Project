@@ -74,12 +74,27 @@ bool Logger::isWaypointReached(WPId id) {
   if (!lock.isLocked()) return false;
   
   auto it = std::find_if(m_waypoints.begin(), m_waypoints.end(),
-                         [id](const InternalWaypoint& wp) { return wp.id == id; });
+                         [id](const InternalWaypoint& ic) { return ic.id == id; });
   
-  if (it == m_waypoints.end() || !it->active) return false;
+  if (it == m_waypoints.end() || !it->active) return {};
 
-  WaypointOffset offset = getWaypointOffset(id);
-  return offset.reached;
+  auto pose = m_getPose ? m_getPose() : std::nullopt;
+  if (!pose) return false;
+
+  // Linear Offsets
+  float linOffset = sqrt(pow(it->params.tarX - pose->x, 2) + pow(it->params.tarY - pose->y, 2));
+  bool linearReached = linOffset <= it->params.linearTol;
+
+  bool angularReached = !it->params.thetaTol.has_value();
+  // Angular Offset (Wrapped to [-180, 180])
+  if (it->params.tarT.has_value()) {
+    double error = it->params.tarT.value() - pose->theta;
+    error = fmod(error + 180.0, 360.0);
+    if (error < 0) error += 360.0;
+    angularReached = std::abs(error - 180.0) <= it->params.thetaTol.value();
+  }
+
+  return linearReached && angularReached;
 }
 
 std::string Logger::getWaypointName(WPId id) {

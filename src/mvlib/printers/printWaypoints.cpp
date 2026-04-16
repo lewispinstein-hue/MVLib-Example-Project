@@ -10,15 +10,6 @@ void Logger::printWaypoints() {
 
   uint32_t nowMs = pros::millis();
 
-  if (m_timings.rosterSyncAllInterval != 0 &&
-      nowMs - m_lastRosterFlush >= m_timings.rosterSyncAllInterval) {
-    for (auto& wp : m_waypoints) {
-      if (!wp.active) continue;
-      Telemetry::getInstance().sendRoster(wp.id, wp.name);
-    }
-    m_lastRosterFlush = nowMs;
-  }
-
   auto pose = m_getPose ? m_getPose() : std::nullopt;
 
   for (auto& wp : m_waypoints) {
